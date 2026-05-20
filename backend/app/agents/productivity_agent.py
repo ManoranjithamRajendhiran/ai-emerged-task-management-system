@@ -1,4 +1,4 @@
-from agents.base_agent import BaseAgent
+from app.agents.base_agent import BaseAgent
 
 SYSTEM_PROMPT = """
 You are an AI Productivity Analysis Agent.

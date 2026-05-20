@@ -1,8 +1,8 @@
-from agents.team_agent import TeamAgent
-from agents.task_agent import TaskAgent
-from agents.report_agent import ReportAgent
-from agents.productivity_agent import ProductivityAgent
-from agents.meeting_agent import MeetingAgent
+from app.agents.team_agent import TeamAgent
+from app.agents.task_agent import TaskAgent
+from app.agents.report_agent import ReportAgent
+from app.agents.productivity_agent import ProductivityAgent
+from app.agents.meeting_agent import MeetingAgent
 
 class OrchestratorAgent:
 
