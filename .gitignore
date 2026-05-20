@@ -1,0 +1,23 @@
+# Environment files
+.env
+*.env
+backend/.env
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.env/
+
+# Node
+node_modules/
+
+# VS Code
+.vscode/
+
+# Build files
+dist/
+build/
+
+# Logs
+*.log
