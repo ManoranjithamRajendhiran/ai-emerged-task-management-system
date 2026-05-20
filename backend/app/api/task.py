@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.database.database import get_db
 from app.models.task import Task
-from app.schemas.task_schema import TaskCreate, TaskStatusUpdate
+from app.schemas.task_schema import TaskCreate, TaskStatusUpdate, TaskUpdate
 from app.services.productivity_service import update_productivity
 from app.auth.auth_bearer import JWTBearer
 from app.auth.current_user import get_current_user
@@ -69,6 +69,73 @@ def update_task_status(
 
     db.commit()
     return {"message": "Task status updated"}
+
+
+@router.put("/{task_id}", dependencies=[Depends(JWTBearer())])
+def update_task(
+    task_id: str,
+    task_update: TaskUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """Update a task with new title, description, priority, due_date, or assignment"""
+    require_role(current_user, [TEAM_MEMBER, TEAM_LEAD, PROJECT_MANAGER, PROJECT_SUCCESS_MANAGER])
+
+    task = db.query(Task).filter(Task.task_id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    # Validate priority if provided
+    if task_update.priority and task_update.priority not in VALID_PRIORITIES:
+        raise HTTPException(status_code=400, detail=f"Invalid priority. Must be one of: {', '.join(VALID_PRIORITIES)}")
+
+    # Update fields if provided
+    if task_update.title is not None:
+        task.title = task_update.title
+    if task_update.description is not None:
+        task.description = task_update.description
+    if task_update.priority is not None:
+        task.priority = task_update.priority
+    if task_update.due_date is not None:
+        task.due_date = task_update.due_date
+    if task_update.assigned_to is not None:
+        task.assigned_to = task_update.assigned_to
+
+    db.commit()
+    db.refresh(task)
+    return {
+        "message": "Task updated successfully",
+        "task_id": str(task.task_id),
+        "task": {
+            "task_id": str(task.task_id),
+            "project_id": str(task.project_id),
+            "assigned_to": str(task.assigned_to),
+            "title": task.title,
+            "description": task.description,
+            "priority": task.priority,
+            "status": task.status,
+            "due_date": str(task.due_date) if task.due_date else None,
+            "productivity_points": task.productivity_points,
+        }
+    }
+
+
+@router.delete("/{task_id}", dependencies=[Depends(JWTBearer())])
+def delete_task(
+    task_id: str,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """Delete a task by ID (only PROJECT_MANAGER, PROJECT_SUCCESS_MANAGER, TEAM_LEAD can delete)"""
+    require_role(current_user, [TEAM_LEAD, PROJECT_MANAGER, PROJECT_SUCCESS_MANAGER])
+
+    task = db.query(Task).filter(Task.task_id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    db.delete(task)
+    db.commit()
+    return {"message": "Task deleted successfully", "task_id": str(task_id)}
 
 
 @router.get("/all", dependencies=[Depends(JWTBearer())])

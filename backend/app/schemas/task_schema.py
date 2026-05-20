@@ -1,40 +1,33 @@
-from pydantic import BaseModel, field_validator
-from datetime import date
+from pydantic import BaseModel, Field
 from typing import Optional
-
-VALID_PRIORITIES = {"LOW", "MEDIUM", "HIGH", "CRITICAL"}
-VALID_STATUSES = {"PENDING", "IN_PROGRESS", "COMPLETED", "BLOCKED"}
+from datetime import date
 
 class TaskCreate(BaseModel):
     project_id: str
     assigned_to: str
     title: str
-    description: str
+    description: str = ""
     priority: str = "MEDIUM"
-    # FIX: due_date was required — make it optional so tasks without deadlines can be created
     due_date: Optional[date] = None
 
-    @field_validator("priority")
-    @classmethod
-    def validate_priority(cls, v):
-        if v not in VALID_PRIORITIES:
-            raise ValueError(f"priority must be one of: {', '.join(VALID_PRIORITIES)}")
-        return v
-
-    @field_validator("title")
-    @classmethod
-    def title_not_empty(cls, v):
-        if not v or not v.strip():
-            raise ValueError("title cannot be empty")
-        return v.strip()
+    class Config:
+        from_attributes = True
 
 
 class TaskStatusUpdate(BaseModel):
-    status: str
+    status: str = Field(..., description="Status must be one of: PENDING, IN_PROGRESS, COMPLETED, BLOCKED")
 
-    @field_validator("status")
-    @classmethod
-    def validate_status(cls, v):
-        if v not in VALID_STATUSES:
-            raise ValueError(f"status must be one of: {', '.join(VALID_STATUSES)}")
-        return v
+    class Config:
+        from_attributes = True
+
+
+class TaskUpdate(BaseModel):
+    """Schema for updating a task - all fields are optional"""
+    title: Optional[str] = None
+    description: Optional[str] = None
+    priority: Optional[str] = None
+    due_date: Optional[date] = None
+    assigned_to: Optional[str] = None
+
+    class Config:
+        from_attributes = True
