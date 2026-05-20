@@ -1,11 +1,11 @@
 from pydantic import BaseModel
 
 from datetime import date
-
+from uuid import UUID
 
 class ProjectResponse(BaseModel):
 
-    project_id: str
+    project_id: UUID
     title: str
     description: str
     status: str

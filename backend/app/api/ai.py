@@ -1,33 +1,72 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-
 from app.database.database import get_db
-
-from app.services.task_service import (
-    generate_tasks
-)
-
+from app.services.task_service import generate_tasks, get_llm
+from app.models.user import User
 from app.auth.auth_bearer import JWTBearer
+import json
 
 router = APIRouter()
 
+@router.post("/generate-tasks", dependencies=[Depends(JWTBearer())])
+def ai_generate_tasks(project_title: str, project_id: str, db: Session = Depends(get_db)):
+    tasks = generate_tasks(project_title, project_id, db)
+    return {"ai_tasks": tasks}
 
-@router.post(
-    "/generate-tasks",
-    dependencies=[Depends(JWTBearer())]
-)
-def ai_generate_tasks(
-    project_title: str,
-    project_id: str,
-    db: Session = Depends(get_db)
-):
+@router.post("/suggest-team", dependencies=[Depends(JWTBearer())])
+def suggest_team(project_title: str, project_description: str, db: Session = Depends(get_db)):
+    """AI analyzes all employees' skills and suggests the best team for a project."""
+    try:
+        all_users = db.query(User).all()
+        
+        employee_profiles = []
+        for u in all_users:
+            skills = u.skills or "Not specified"
+            github = u.github_summary or ""
+            employee_profiles.append(
+                f"- ID: {u.user_id} | Name: {u.name} | Role: {u.role} | Skills: {skills} | GitHub: {github[:120]}"
+            )
+        
+        profiles_text = "\n".join(employee_profiles)
+        llm = get_llm()
+        
+        prompt = f"""
+You are an AI HR manager. Suggest the best team for this project:
 
-    tasks = generate_tasks(
-        project_title,
-        project_id,
-        db
-    )
+Project: "{project_title}"
+Description: "{project_description}"
 
-    return {
-        "ai_tasks": tasks
-    }
+Available employees:
+{profiles_text}
+
+Select the best team (1 Project Manager role person as team lead, 3-5 team members).
+Base your selection on skill relevance to the project.
+
+Return ONLY valid JSON, no markdown:
+{{
+  "suggested_team_lead": {{
+    "user_id": "uuid here",
+    "name": "name",
+    "reason": "why they should lead"
+  }},
+  "suggested_members": [
+    {{
+      "user_id": "uuid here", 
+      "name": "name",
+      "skills": "their relevant skills",
+      "reason": "why they fit this project"
+    }}
+  ],
+  "team_summary": "Overall summary of why this team works well together"
+}}
+"""
+        response = llm.invoke(prompt)
+        content = response.content.strip()
+        if "```" in content:
+            content = content.split("```json")[-1].split("```")[0].strip()
+        
+        result = json.loads(content)
+        return {"suggestion": result}
+    
+    except Exception as e:
+        return {"error": str(e)}

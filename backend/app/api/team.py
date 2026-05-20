@@ -65,3 +65,20 @@ def add_member(
     return {
         "message": "Member added successfully"
     }
+@router.get(
+    "/all",
+    dependencies=[Depends(JWTBearer())]
+)
+def get_all_teams(
+    db: Session = Depends(get_db)
+):
+    teams = db.query(Team).all()
+    return [
+        {
+            "team_id": str(t.team_id),
+            "team_name": t.team_name,
+            "project_id": str(t.project_id),
+            "team_lead_id": str(t.team_lead_id)
+        }
+        for t in teams
+    ]
