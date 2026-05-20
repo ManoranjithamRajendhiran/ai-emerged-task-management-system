@@ -25,6 +25,51 @@ async function apiFetch(path, opts = {}) {
   return res.json();
 }
 
+// ─── PDF Download helper (no external library needed) ────────────────────────
+function downloadReportAsPDF(content, filename = "project-report.pdf") {
+  const now = new Date().toLocaleString();
+  const lines = content.split("\n");
+  const htmlLines = lines.map(line => {
+    const t = line.trim();
+    if (!t) return "<br/>";
+    if (/^[A-Z][A-Z\s\-\/]{4,}:?\s*$/.test(t))
+      return `<h2 style="color:#2c5282;border-bottom:2px solid #bee3f8;padding-bottom:6px;margin-top:28px">${t}</h2>`;
+    if (t.startsWith("- ") || t.startsWith("• "))
+      return `<li style="margin:4px 0">${t.slice(2)}</li>`;
+    if (/^\d+\./.test(t))
+      return `<li style="margin:4px 0">${t}</li>`;
+    return `<p style="margin:6px 0;line-height:1.7">${t}</p>`;
+  }).join("\n");
+
+  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${filename}</title>
+<style>
+  body{font-family:'Segoe UI',Arial,sans-serif;color:#1a202c;max-width:800px;margin:40px auto;padding:0 32px;font-size:14px}
+  h1{color:#1a365d;font-size:22px;margin-bottom:4px}
+  .meta{color:#718096;font-size:12px;margin-bottom:32px;border-bottom:1px solid #e2e8f0;padding-bottom:16px}
+  h2{font-size:15px;font-weight:700}
+  ul,ol{padding-left:20px}
+  @media print{body{margin:0;padding:24px}.no-print{display:none}}
+</style></head><body>
+  <h1>📊 AI Project Report</h1>
+  <div class="meta">Generated on ${now}</div>
+  <div class="no-print" style="background:#ebf8ff;border:1px solid #bee3f8;border-radius:8px;padding:12px 16px;margin-bottom:24px;font-size:13px;color:#2c5282">
+    💡 Press <strong>Ctrl+P</strong> (or Cmd+P on Mac) → choose <strong>Save as PDF</strong> to download.
+  </div>
+  ${htmlLines}
+</body></html>`;
+
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const win = window.open(url, "_blank");
+  // Fallback if popups are blocked — save as .txt
+  if (!win) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([content], { type: "text/plain" }));
+    a.download = filename.replace(".pdf", ".txt");
+    a.click();
+  }
+}
+
 // ─── Palette ─────────────────────────────────────────────────────────────────
 const PALETTE = {
   bg: "#0f1117",
@@ -251,13 +296,28 @@ function ProjectsPage({ toast, user }) {
   const [form, setForm] = useState({ title: "", description: "", start_date: "", end_date: "" });
   const [saving, setSaving] = useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
-  const canCreate = user?.role === "PROJECT_MANAGER";
+  const isProjectManager = user?.role === "PROJECT_MANAGER";
+  const isPSM = user?.role === "PROJECT_SUCCESS_MANAGER";
+  const canCreate = isProjectManager;
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setProjects(await apiFetch("/projects/all")); } catch { }
+    try {
+      const all = await apiFetch("/projects/all");
+      // PROJECT_MANAGER sees only their own projects (created_by or manager_id matches)
+      // PROJECT_SUCCESS_MANAGER and others see all
+      if (isProjectManager && user?.user_id) {
+        setProjects(all.filter(p =>
+          p.created_by === user.user_id ||
+          p.manager_id === user.user_id ||
+          p.project_manager_id === user.user_id
+        ));
+      } else {
+        setProjects(all);
+      }
+    } catch { }
     setLoading(false);
-  }, []);
+  }, [isProjectManager, user?.user_id]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -273,7 +333,14 @@ function ProjectsPage({ toast, user }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <h2 style={{ margin: 0, color: PALETTE.text }}>Projects</h2>
+        <div>
+          <h2 style={{ margin: "0 0 4px", color: PALETTE.text }}>Projects</h2>
+          {isProjectManager && (
+            <p style={{ margin: 0, fontSize: 12, color: PALETTE.muted }}>
+              Showing your allocated projects only
+            </p>
+          )}
+        </div>
         {canCreate && <Btn onClick={() => setModal(true)}>+ New Project</Btn>}
       </div>
       {loading ? <div style={{ color: PALETTE.muted }}>Loading…</div> : (
@@ -290,7 +357,11 @@ function ProjectsPage({ toast, user }) {
               </div>
             </div>
           ))}
-          {!projects.length && <div style={{ color: PALETTE.muted, fontSize: 14 }}>No projects yet.</div>}
+          {!projects.length && (
+            <div style={{ color: PALETTE.muted, fontSize: 14 }}>
+              {isProjectManager ? "No projects allocated to you yet." : "No projects yet."}
+            </div>
+          )}
         </div>
       )}
       {modal && (
@@ -532,56 +603,105 @@ function TasksPage({ toast, user }) {
 // AI TOOLS
 function AIPage({ toast, user }) {
   const [projects, setProjects] = useState([]);
+  const [users, setUsers] = useState([]);
   const [aiResult, setAiResult] = useState(null);
   const [projectId, setProjectId] = useState("");
   const [projectTitle, setProjectTitle] = useState("");
   const [transcript, setTranscript] = useState("");
   const [meetingResult, setMeetingResult] = useState(null);
-  const [report, setReport] = useState(null);
+  // Overall project report (PROJECT_SUCCESS_MANAGER / PROJECT_MANAGER)
+  const [overallReport, setOverallReport] = useState(null);
+  // Individual member report
+  const [memberReport, setMemberReport] = useState(null);
+  const [selectedMemberId, setSelectedMemberId] = useState("");
   const [teamSuggest, setTeamSuggest] = useState(null);
   const [teamProjectTitle, setTeamProjectTitle] = useState("");
   const [teamProjectDesc, setTeamProjectDesc] = useState("");
   const [loading, setLoading] = useState({});
-  const set = k => v => setLoading(l => ({ ...l, [k]: v }));
-  const canReport = user?.role === "PROJECT_SUCCESS_MANAGER";
+  const setL = k => v => setLoading(l => ({ ...l, [k]: v }));
 
-  useEffect(() => { apiFetch("/projects/all").then(setProjects).catch(() => {}); }, []);
+  // Role flags
+  const role = user?.role;
+  const canOverallReport = ["PROJECT_SUCCESS_MANAGER", "PROJECT_MANAGER"].includes(role);
+  const canMemberReport = ["PROJECT_SUCCESS_MANAGER", "PROJECT_MANAGER", "TEAM_LEAD"].includes(role);
+  // A TEAM_MEMBER can only view their own report
+  const isMember = role === "TEAM_MEMBER";
+
+  useEffect(() => {
+    apiFetch("/projects/all").then(setProjects).catch(() => {});
+    apiFetch("/user/all").then(setUsers).catch(e => toast("Failed to load users: " + e.message, "error"));
+  }, []);
+
+  // Pre-select self for TEAM_MEMBER
+  useEffect(() => {
+    if (isMember && user?.user_id) setSelectedMemberId(user.user_id);
+  }, [isMember, user]);
 
   async function generateTasks() {
-    set("tasks")(true);
+    setL("tasks")(true);
     try {
       const res = await apiFetch(`/ai/generate-tasks?project_title=${encodeURIComponent(projectTitle)}&project_id=${projectId}`, { method: "POST" });
       setAiResult(res.ai_tasks);
     } catch (ex) { toast(ex.message, "error"); }
-    set("tasks")(false);
+    setL("tasks")(false);
   }
 
   async function suggestTeam() {
-    set("team")(true);
+    setL("team")(true);
     try {
       const res = await apiFetch(`/ai/suggest-team?project_title=${encodeURIComponent(teamProjectTitle)}&project_description=${encodeURIComponent(teamProjectDesc)}`, { method: "POST" });
       setTeamSuggest(res.suggestion);
     } catch (ex) { toast(ex.message, "error"); }
-    set("team")(false);
+    setL("team")(false);
   }
 
   async function summarizeMeeting() {
-    set("meeting")(true);
+    setL("meeting")(true);
     try {
       const res = await apiFetch(`/meeting/summarize?transcript=${encodeURIComponent(transcript)}`, { method: "POST" });
       setMeetingResult(res.meeting_summary);
     } catch (ex) { toast(ex.message, "error"); }
-    set("meeting")(false);
+    setL("meeting")(false);
   }
 
-  async function generateReport() {
-    set("report")(true);
+  // FIX: use POST, and accept multiple response key shapes
+  async function generateOverallReport() {
+    setL("overallReport")(true);
+    setOverallReport(null);
     try {
-      const res = await apiFetch("/reports/generate");
-      setReport(res.report);
-    } catch (ex) { toast(ex.message, "error"); }
-    set("report")(false);
+      const res = await apiFetch("/reports/generate", { method: "POST" });
+      // Backend may return { report: "..." } or { overall_report: "..." } or { summary: "..." }
+      const text = res.report ?? res.overall_report ?? res.summary ?? res.content ?? JSON.stringify(res, null, 2);
+      setOverallReport(text);
+    } catch (ex) { toast("Report failed: " + ex.message, "error"); }
+    setL("overallReport")(false);
   }
+
+  // FIX: individual member report — calls /reports/member/{user_id}
+  async function generateMemberReport() {
+    if (!selectedMemberId) { toast("Please select a member", "error"); return; }
+    setL("memberReport")(true);
+    setMemberReport(null);
+    try {
+      const res = await apiFetch(`/reports/member/${selectedMemberId}`, { method: "POST" });
+      // Accept multiple key shapes
+      const text = res.report ?? res.member_report ?? res.summary ?? res.content ?? JSON.stringify(res, null, 2);
+      setMemberReport(text);
+    } catch (ex) { toast("Member report failed: " + ex.message, "error"); }
+    setL("memberReport")(false);
+  }
+
+  const ReportBox = ({ title, content }) => (
+    <div style={{ marginTop: 16, background: "#0a0d12", borderRadius: 10, border: `1px solid ${PALETTE.border}`, overflow: "hidden" }}>
+      <div style={{ padding: "8px 14px", borderBottom: `1px solid ${PALETTE.border}`, display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: PALETTE.success }} />
+        <span style={{ fontSize: 11, color: PALETTE.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{title}</span>
+      </div>
+      <div style={{ padding: 14, maxHeight: 400, overflowY: "auto" }}>
+        <p style={{ color: PALETTE.text, fontSize: 13, margin: 0, whiteSpace: "pre-wrap", lineHeight: 1.7 }}>{content}</p>
+      </div>
+    </div>
+  );
 
   return (
     <div>
@@ -675,23 +795,79 @@ function AIPage({ toast, user }) {
           )}
         </div>
 
-        {/* AI Report */}
-        {canReport && (
+        {/* ── INDIVIDUAL MEMBER REPORT ── visible to managers, leads, and members (own only) */}
+        {(canMemberReport || isMember) && (
+          <div style={styles.card}>
+            <div style={{ fontSize: 24, marginBottom: 10 }}>👤</div>
+            <h3 style={{ margin: "0 0 6px", color: PALETTE.text, fontSize: 15 }}>Member Performance Report</h3>
+            <p style={{ color: PALETTE.muted, fontSize: 13, margin: "0 0 16px" }}>
+              {isMember
+                ? "Generate an AI report on your own task performance and productivity."
+                : "Generate an AI performance report for any individual team member."}
+            </p>
+            {/* Managers/leads pick a member; team members see only themselves */}
+            {!isMember ? (
+              <Select
+                label="Select Member"
+                value={selectedMemberId}
+                onChange={e => { setSelectedMemberId(e.target.value); setMemberReport(null); }}
+                options={[
+                  { value: "", label: "Choose a member…" },
+                  ...users.map(u => ({ value: u.user_id, label: `${u.name} — ${u.role?.replace(/_/g, " ")}` })),
+                ]}
+              />
+            ) : (
+              <div style={{ ...styles.card, background: PALETTE.accentSoft, marginBottom: 14, padding: "10px 14px" }}>
+                <span style={{ fontSize: 13, color: PALETTE.accent, fontWeight: 600 }}>
+                  📋 Generating report for: {user?.name || user?.email}
+                </span>
+              </div>
+            )}
+            <Btn
+              loading={loading.memberReport}
+              onClick={generateMemberReport}
+              style={{ width: "100%" }}
+              variant={selectedMemberId ? "primary" : "ghost"}
+            >
+              Generate Member Report
+            </Btn>
+            {memberReport && <ReportBox title="Member Performance Report" content={memberReport} />}
+          </div>
+        )}
+
+        {/* ── OVERALL PROJECT REPORT ── PROJECT_SUCCESS_MANAGER and PROJECT_MANAGER only */}
+        {canOverallReport && (
           <div style={styles.card}>
             <div style={{ fontSize: 24, marginBottom: 10 }}>📊</div>
-            <h3 style={{ margin: "0 0 6px", color: PALETTE.text, fontSize: 15 }}>Project Report</h3>
+            <h3 style={{ margin: "0 0 6px", color: PALETTE.text, fontSize: 15 }}>Overall Project Report</h3>
             <p style={{ color: PALETTE.muted, fontSize: 13, margin: "0 0 16px" }}>
-              Generate a comprehensive AI analysis report across all projects and team performance.
+              Generate a comprehensive AI analysis report across all projects and full team performance.
             </p>
-            <Btn loading={loading.report} onClick={generateReport} style={{ width: "100%" }}>Generate AI Report</Btn>
-            {report && (
-              <div style={{ marginTop: 16, background: "#0f1117", borderRadius: 8, padding: 12 }}>
-                <div style={{ fontSize: 12, color: PALETTE.muted, marginBottom: 8 }}>Report</div>
-                <p style={{ color: PALETTE.text, fontSize: 13, margin: 0, whiteSpace: "pre-wrap" }}>{report}</p>
-              </div>
+            <Btn loading={loading.overallReport} onClick={generateOverallReport} style={{ width: "100%" }}>
+              Generate Overall AI Report
+            </Btn>
+            {overallReport && (
+              <>
+                <ReportBox title="Overall Project Report" content={overallReport} />
+                {/* Download as PDF — PROJECT_SUCCESS_MANAGER only */}
+                {role === "PROJECT_SUCCESS_MANAGER" && (
+                  <button
+                    onClick={() => downloadReportAsPDF(overallReport, "overall-project-report.pdf")}
+                    style={{
+                      marginTop: 12, width: "100%", padding: "9px 18px", borderRadius: 8,
+                      border: `1px solid ${PALETTE.success}`, cursor: "pointer", fontSize: 13,
+                      fontWeight: 600, background: "transparent", color: PALETTE.success,
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    }}
+                  >
+                    ⬇ Download as PDF
+                  </button>
+                )}
+              </>
             )}
           </div>
         )}
+
       </div>
     </div>
   );
