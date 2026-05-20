@@ -15,19 +15,28 @@ from app.api.ai import router as ai_router
 from app.models.productivity import Productivity
 from app.api.productivity import router as productivity_router
 from app.api.report import router as report_router
-from app.api.orchestrator import router as orchestrator_router  # BUG FIX 13: was imported twice, second import was unused
+from app.api.orchestrator import router as orchestrator_router
 from app.api.meeting import router as meeting_router
-
 import os
 from dotenv import load_dotenv
 load_dotenv()
 
 app = FastAPI(title="AI Task Management System", version="1.0.0")
 
-# BUG FIX 14: CORS hardcoded to localhost:5173 only — breaks any other environment.
-# Read allowed origins from env, fall back to localhost for dev.
-_raw_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:5173")
-ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+# FIX: Allow all localhost ports in dev so any React port works (3000, 5173, 5174, etc.)
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "")
+if _raw_origins:
+    ALLOWED_ORIGINS = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+else:
+    # Dev mode — allow all localhost ports
+    ALLOWED_ORIGINS = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:4173",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
+    ]
 
 app.add_middleware(
     CORSMiddleware,
@@ -39,11 +48,9 @@ app.add_middleware(
 
 Base.metadata.create_all(bind=engine)
 
-
 @app.get("/")
 def home():
     return {"message": "Backend Running"}
-
 
 app.include_router(auth_router, prefix="/auth", tags=["Auth"])
 app.include_router(user_router, prefix="/user", tags=["User"])
