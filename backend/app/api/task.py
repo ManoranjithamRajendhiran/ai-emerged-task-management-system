@@ -1,0 +1,125 @@
+from fastapi import APIRouter, Depends
+from sqlalchemy.orm import Session
+
+from app.database.database import get_db
+
+from app.models.task import Task
+
+from app.schemas.task_schema import (
+    TaskCreate,
+    TaskStatusUpdate
+)
+
+from app.services.productivity_service import (
+    update_productivity
+)
+from app.auth.auth_bearer import JWTBearer
+
+from app.auth.current_user import (
+    get_current_user
+)
+
+from app.auth.permissions import (
+    require_role
+)
+
+from app.core.roles import (
+    TEAM_LEAD
+)
+from app.core.roles import (
+    TEAM_MEMBER
+)
+
+
+router = APIRouter()
+
+
+@router.post(
+    "/create",
+    dependencies=[Depends(JWTBearer())]
+)
+def create_task(
+    task: TaskCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    require_role(
+        current_user,
+        [TEAM_LEAD]
+    )
+
+    new_task = Task(
+        project_id=task.project_id,
+        assigned_to=task.assigned_to,
+        title=task.title,
+        description=task.description,
+        priority=task.priority,
+        due_date=task.due_date
+    )
+
+    db.add(new_task)
+
+    db.commit()
+
+    db.refresh(new_task)
+
+    return {
+        "message": "Task created successfully",
+        "task_id": str(new_task.task_id)
+    }
+
+
+@router.put(
+    "/status/{task_id}",
+    dependencies=[Depends(JWTBearer())]
+)
+def update_task_status(
+    task_id: str,
+    status_update: TaskStatusUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    require_role(
+        current_user,
+        [TEAM_MEMBER]
+    )
+    
+    task = db.query(Task).filter(
+        Task.task_id == task_id
+    ).first()
+
+    if not task:
+
+        return {
+            "message": "Task not found"
+        }
+
+    task.status = status_update.status
+    update_productivity(
+    db,
+    task.assigned_to,
+    status_update.status
+    )
+
+    if status_update.status == "COMPLETED":
+
+        task.productivity_points += 10
+
+    db.commit()
+
+    return {
+        "message": "Task status updated"
+    }
+
+
+@router.get(
+    "/all",
+    dependencies=[Depends(JWTBearer())]
+)
+def get_all_tasks(
+    db: Session = Depends(get_db)
+):
+
+    tasks = db.query(Task).all()
+
+    return tasks
