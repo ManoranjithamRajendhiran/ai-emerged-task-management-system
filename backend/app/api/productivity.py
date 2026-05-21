@@ -5,6 +5,9 @@ from app.models.productivity import Productivity
 from app.models.user import User
 from app.models.task import Task
 from app.auth.auth_bearer import JWTBearer
+from app.auth.current_user import get_current_user
+from app.auth.permissions import require_role
+from app.core.roles import PROJECT_SUCCESS_MANAGER, PROJECT_MANAGER
 from langchain_groq import ChatGroq
 from dotenv import load_dotenv
 import os
@@ -13,7 +16,11 @@ load_dotenv()
 router = APIRouter()
 
 @router.get("/all", dependencies=[Depends(JWTBearer())])
-def get_productivity(db: Session = Depends(get_db)):
+def get_productivity(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    require_role(current_user, [PROJECT_SUCCESS_MANAGER, PROJECT_MANAGER])
     productivity = db.query(Productivity).all()
     return [
         {
@@ -26,8 +33,11 @@ def get_productivity(db: Session = Depends(get_db)):
     ]
 
 @router.get("/analyze", dependencies=[Depends(JWTBearer())])
-def analyze_productivity(db: Session = Depends(get_db)):
-    """AI-powered productivity analysis with burnout detection and workload insights."""
+def analyze_productivity(
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    require_role(current_user, [PROJECT_SUCCESS_MANAGER, PROJECT_MANAGER])
     try:
         users = db.query(User).all()
         productivity = db.query(Productivity).all()

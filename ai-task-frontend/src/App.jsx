@@ -566,6 +566,8 @@ function AIPage({ toast, user }) {
   const canMemberReport = ["PROJECT_SUCCESS_MANAGER", "PROJECT_MANAGER", "TEAM_LEAD"].includes(role);
   const isMember = role === "TEAM_MEMBER";
   const canOverallReport = ["PROJECT_SUCCESS_MANAGER", "PROJECT_MANAGER"].includes(role);
+  // PSM and PM get all agent tools; TEAM_LEAD and TEAM_MEMBER only get Meeting + Report
+  const canUseAgents = ["PROJECT_SUCCESS_MANAGER", "PROJECT_MANAGER"].includes(role);
 
   // Orchestrator
   const [orchProjectId, setOrchProjectId] = useState("");
@@ -685,8 +687,8 @@ function AIPage({ toast, user }) {
       <h2 style={{ margin: "0 0 20px", color: PALETTE.text }}>AI Tools</h2>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 20 }}>
 
-        {/* ── AI Team Builder ── */}
-        <div style={styles.card}>
+        {/* ── AI Team Builder ── PSM + PM only */}
+        {canUseAgents && <div style={styles.card}>
           <div style={{ fontSize: 24, marginBottom: 10 }}>🧠</div>
           <h3 style={{ margin: "0 0 6px", color: PALETTE.text, fontSize: 15 }}>AI Team Builder</h3>
           <p style={{ color: PALETTE.muted, fontSize: 13, margin: "0 0 16px" }}>
@@ -719,10 +721,10 @@ function AIPage({ toast, user }) {
               )}
             </div>
           )}
-        </div>
+        </div>}
 
-        {/* ── AI Task Assigner ── */}
-        <div style={styles.card}>
+        {/* ── AI Task Assigner ── PSM + PM only */}
+        {canUseAgents && <div style={styles.card}>
           <div style={{ fontSize: 24, marginBottom: 10 }}>🤖</div>
           <h3 style={{ margin: "0 0 6px", color: PALETTE.text, fontSize: 15 }}>AI Task Assigner</h3>
           <p style={{ color: PALETTE.muted, fontSize: 13, margin: "0 0 16px" }}>
@@ -758,9 +760,9 @@ function AIPage({ toast, user }) {
               {typeof aiResult === "object" ? aiResult.error : aiResult}
             </div>
           )}
-        </div>
+        </div>}
 
-        {/* ── Meeting Summarizer ── */}
+        {/* ── Meeting Summarizer ── all roles */}
         <div style={styles.card}>
           <div style={{ fontSize: 24, marginBottom: 10 }}>📝</div>
           <h3 style={{ margin: "0 0 6px", color: PALETTE.text, fontSize: 15 }}>Meeting Summarizer</h3>
@@ -775,8 +777,8 @@ function AIPage({ toast, user }) {
           )}
         </div>
         
-        {/* ── Full Project Workflow Orchestrator ── */}
-        <div style={styles.card}>
+        {/* ── Full Project Workflow Orchestrator ── PSM + PM only */}
+        {canUseAgents && <div style={styles.card}>
           <div style={{ fontSize: 24, marginBottom: 10 }}>⚡</div>
           <h3 style={{ margin: "0 0 6px", color: PALETTE.text, fontSize: 15 }}>Full Project Workflow</h3>
           <p style={{ color: PALETTE.muted, fontSize: 13, margin: "0 0 16px" }}>
@@ -830,10 +832,10 @@ function AIPage({ toast, user }) {
               )}
             </div>
           )}
-        </div>
+        </div>}
 
-        {/* ── AI Productivity Analysis ── */}
-        <div style={styles.card}>
+        {/* ── AI Productivity Analysis ── PSM + PM only */}
+        {canUseAgents && <div style={styles.card}>
           <div style={{ fontSize: 24, marginBottom: 10 }}>🧬</div>
           <h3 style={{ margin: "0 0 6px", color: PALETTE.text, fontSize: 15 }}>AI Productivity Analysis</h3>
           <p style={{ color: PALETTE.muted, fontSize: 13, margin: "0 0 16px" }}>
@@ -899,8 +901,8 @@ function AIPage({ toast, user }) {
           {productivityAnalysis && typeof productivityAnalysis === "string" && (
             <div style={{ marginTop: 12, color: PALETTE.danger, fontSize: 13 }}>{productivityAnalysis}</div>
           )}
-        </div>
-        {/* ── Member Performance Report ── managers, leads, and members (own only) ── */}
+        </div>}
+        {/* ── Member Performance Report ── all roles (TEAM_MEMBER sees own only) ── */}
         {(canMemberReport || isMember) && (
           <div style={styles.card}>
             <div style={{ fontSize: 24, marginBottom: 10 }}>👤</div>

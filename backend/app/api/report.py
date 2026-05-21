@@ -4,6 +4,8 @@ from app.database.database import get_db
 from app.services.report_service import generate_report
 from app.auth.auth_bearer import JWTBearer
 from app.auth.current_user import get_current_user
+from app.auth.permissions import require_role
+from app.core.roles import PROJECT_SUCCESS_MANAGER, PROJECT_MANAGER, TEAM_LEAD, TEAM_MEMBER
 
 router = APIRouter()
 
@@ -12,11 +14,8 @@ def generate_ai_report(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    # Allow PROJECT_SUCCESS_MANAGER and PROJECT_MANAGER to generate reports
-    allowed = ["PROJECT_SUCCESS_MANAGER", "PROJECT_MANAGER"]
-    if current_user["role"] not in allowed:
-        return {"error": "Access denied. Only Project Success Manager or Project Manager can generate reports."}
-
+    # Overall report: PSM and PM only
+    require_role(current_user, [PROJECT_SUCCESS_MANAGER, PROJECT_MANAGER])
     report = generate_report(db)
     return {"report": report}
 
@@ -26,11 +25,10 @@ def generate_member_report(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-    allowed = ["PROJECT_SUCCESS_MANAGER", "PROJECT_MANAGER", "TEAM_LEAD", "TEAM_MEMBER"]
-    if current_user["role"] not in allowed:
-        return {"error": "Access denied"}
+    # Member report: all 4 roles, but TEAM_MEMBER can only see their own
+    require_role(current_user, [PROJECT_SUCCESS_MANAGER, PROJECT_MANAGER, TEAM_LEAD, TEAM_MEMBER])
 
-    if current_user["role"] == "TEAM_MEMBER" and current_user["user_id"] != user_id:
+    if current_user["role"] == TEAM_MEMBER and current_user["user_id"] != user_id:
         return {"error": "You can only view your own report"}
 
     from app.models.task import Task
