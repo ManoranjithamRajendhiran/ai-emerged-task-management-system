@@ -25,51 +25,6 @@ async function apiFetch(path, opts = {}) {
   return res.json();
 }
 
-// ─── PDF Download helper (no external library needed) ────────────────────────
-function downloadReportAsPDF(content, filename = "project-report.pdf") {
-  const now = new Date().toLocaleString();
-  const lines = content.split("\n");
-  const htmlLines = lines.map(line => {
-    const t = line.trim();
-    if (!t) return "<br/>";
-    if (/^[A-Z][A-Z\s\-\/]{4,}:?\s*$/.test(t))
-      return `<h2 style="color:#2c5282;border-bottom:2px solid #bee3f8;padding-bottom:6px;margin-top:28px">${t}</h2>`;
-    if (t.startsWith("- ") || t.startsWith("• "))
-      return `<li style="margin:4px 0">${t.slice(2)}</li>`;
-    if (/^\d+\./.test(t))
-      return `<li style="margin:4px 0">${t}</li>`;
-    return `<p style="margin:6px 0;line-height:1.7">${t}</p>`;
-  }).join("\n");
-
-  const html = `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>${filename}</title>
-<style>
-  body{font-family:'Segoe UI',Arial,sans-serif;color:#1a202c;max-width:800px;margin:40px auto;padding:0 32px;font-size:14px}
-  h1{color:#1a365d;font-size:22px;margin-bottom:4px}
-  .meta{color:#718096;font-size:12px;margin-bottom:32px;border-bottom:1px solid #e2e8f0;padding-bottom:16px}
-  h2{font-size:15px;font-weight:700}
-  ul,ol{padding-left:20px}
-  @media print{body{margin:0;padding:24px}.no-print{display:none}}
-</style></head><body>
-  <h1>📊 AI Project Report</h1>
-  <div class="meta">Generated on ${now}</div>
-  <div class="no-print" style="background:#ebf8ff;border:1px solid #bee3f8;border-radius:8px;padding:12px 16px;margin-bottom:24px;font-size:13px;color:#2c5282">
-    💡 Press <strong>Ctrl+P</strong> (or Cmd+P on Mac) → choose <strong>Save as PDF</strong> to download.
-  </div>
-  ${htmlLines}
-</body></html>`;
-
-  const blob = new Blob([html], { type: "text/html" });
-  const url = URL.createObjectURL(blob);
-  const win = window.open(url, "_blank");
-  // Fallback if popups are blocked — save as .txt
-  if (!win) {
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(new Blob([content], { type: "text/plain" }));
-    a.download = filename.replace(".pdf", ".txt");
-    a.click();
-  }
-}
-
 // ─── Palette ─────────────────────────────────────────────────────────────────
 const PALETTE = {
   bg: "#0f1117",
@@ -215,10 +170,10 @@ function Stat({ label, value, color }) {
 // AUTH
 function AuthPage({ onAuth }) {
   const [mode, setMode] = useState("login");
-  const [form, setForm] = useState({ name: "", email: "", password: "", role: "TEAM_MEMBER", skills: "", github_url: "" });
+  const [form, setForm] = useState({ name: "", email: "", password: "", role: "TEAM_MEMBER" });
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState("");
-  
+
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
 
   async function submit(e) {
@@ -226,17 +181,7 @@ function AuthPage({ onAuth }) {
     setLoading(true); setErr("");
     try {
       if (mode === "register") {
-       await apiFetch("/auth/register", { 
-        method: "POST", 
-        body: JSON.stringify({
-          name: form.name,
-          email: form.email,
-          password: form.password,
-          role: form.role,
-          skills: form.skills,
-          github_url: form.github_url
-        }) 
-      });
+        await apiFetch("/auth/register", { method: "POST", body: JSON.stringify(form) });
         setMode("login");
       } else {
         const res = await apiFetch("/auth/login", {
@@ -272,11 +217,7 @@ function AuthPage({ onAuth }) {
           <Input label="Email" type="email" value={form.email} onChange={set("email")} required placeholder="you@company.com" />
           <Input label="Password" type="password" value={form.password} onChange={set("password")} required placeholder="••••••••" />
           {mode === "register" && (
-            <>
-              <Select label="Role" value={form.role} onChange={set("role")} options={ROLES.map(r => ({ value: r, label: r.replace(/_/g, " ") }))} />
-              <Input label="Skills (comma separated)" value={form.skills} onChange={set("skills")} placeholder="React, Python, FastAPI, SQL" />
-              <Input label="GitHub Profile URL" value={form.github_url} onChange={set("github_url")} placeholder="https://github.com/yourusername" />
-            </>
+            <Select label="Role" value={form.role} onChange={set("role")} options={ROLES.map(r => ({ value: r, label: r.replace(/_/g, " ") }))} />
           )}
           {err && <div style={{ color: PALETTE.danger, fontSize: 13, marginBottom: 12 }}>{err}</div>}
           <Btn style={{ width: "100%" }} loading={loading} type="submit">
@@ -296,28 +237,13 @@ function ProjectsPage({ toast, user }) {
   const [form, setForm] = useState({ title: "", description: "", start_date: "", end_date: "" });
   const [saving, setSaving] = useState(false);
   const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }));
-  const isProjectManager = user?.role === "PROJECT_MANAGER";
-  const isPSM = user?.role === "PROJECT_SUCCESS_MANAGER";
-  const canCreate = isProjectManager;
+  const canCreate = user?.role === "PROJECT_MANAGER";
 
   const load = useCallback(async () => {
     setLoading(true);
-    try {
-      const all = await apiFetch("/projects/all");
-      // PROJECT_MANAGER sees only their own projects (created_by or manager_id matches)
-      // PROJECT_SUCCESS_MANAGER and others see all
-      if (isProjectManager && user?.user_id) {
-        setProjects(all.filter(p =>
-          p.created_by === user.user_id ||
-          p.manager_id === user.user_id ||
-          p.project_manager_id === user.user_id
-        ));
-      } else {
-        setProjects(all);
-      }
-    } catch { }
+    try { setProjects(await apiFetch("/projects/all")); } catch { }
     setLoading(false);
-  }, [isProjectManager, user?.user_id]);
+  }, []);
 
   useEffect(() => { load(); }, [load]);
 
@@ -333,14 +259,7 @@ function ProjectsPage({ toast, user }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-        <div>
-          <h2 style={{ margin: "0 0 4px", color: PALETTE.text }}>Projects</h2>
-          {isProjectManager && (
-            <p style={{ margin: 0, fontSize: 12, color: PALETTE.muted }}>
-              Showing your allocated projects only
-            </p>
-          )}
-        </div>
+        <h2 style={{ margin: 0, color: PALETTE.text }}>Projects</h2>
         {canCreate && <Btn onClick={() => setModal(true)}>+ New Project</Btn>}
       </div>
       {loading ? <div style={{ color: PALETTE.muted }}>Loading…</div> : (
@@ -357,11 +276,7 @@ function ProjectsPage({ toast, user }) {
               </div>
             </div>
           ))}
-          {!projects.length && (
-            <div style={{ color: PALETTE.muted, fontSize: 14 }}>
-              {isProjectManager ? "No projects allocated to you yet." : "No projects yet."}
-            </div>
-          )}
+          {!projects.length && <div style={{ color: PALETTE.muted, fontSize: 14 }}>No projects yet.</div>}
         </div>
       )}
       {modal && (
@@ -395,10 +310,9 @@ function TeamsPage({ toast, user }) {
   const setM = k => e => setMemberForm(f => ({ ...f, [k]: e.target.value }));
 
   useEffect(() => {
-  apiFetch("/teams/all").then(setTeams).catch(() => {});
-  apiFetch("/user/all").then(setUsers).catch(() => {});
-  apiFetch("/projects/all").then(setProjects).catch(() => {});
-}, []);
+    apiFetch("/user/all").then(setUsers).catch(() => {});
+    apiFetch("/projects/all").then(setProjects).catch(() => {});
+  }, []);
 
   async function createTeam(e) {
     e.preventDefault(); setSaving(true);
@@ -600,115 +514,178 @@ function TasksPage({ toast, user }) {
   );
 }
 
-// AI TOOLS
-function AIPage({ toast, user }) {
-  const [projects, setProjects] = useState([]);
-  const [users, setUsers] = useState([]);
-  const [aiResult, setAiResult] = useState(null);
-  const [projectId, setProjectId] = useState("");
-  const [projectTitle, setProjectTitle] = useState("");
-  const [transcript, setTranscript] = useState("");
-  const [meetingResult, setMeetingResult] = useState(null);
-  // Overall project report (PROJECT_SUCCESS_MANAGER / PROJECT_MANAGER)
-  const [overallReport, setOverallReport] = useState(null);
-  // Individual member report
-  const [memberReport, setMemberReport] = useState(null);
-  const [selectedMemberId, setSelectedMemberId] = useState("");
-  const [teamSuggest, setTeamSuggest] = useState(null);
-  const [teamProjectTitle, setTeamProjectTitle] = useState("");
-  const [teamProjectDesc, setTeamProjectDesc] = useState("");
-  const [loading, setLoading] = useState({});
-  const setL = k => v => setLoading(l => ({ ...l, [k]: v }));
-
-  // Role flags
-  const role = user?.role;
-  const canOverallReport = ["PROJECT_SUCCESS_MANAGER", "PROJECT_MANAGER"].includes(role);
-  const canMemberReport = ["PROJECT_SUCCESS_MANAGER", "PROJECT_MANAGER", "TEAM_LEAD"].includes(role);
-  // A TEAM_MEMBER can only view their own report
-  const isMember = role === "TEAM_MEMBER";
-
-  useEffect(() => {
-    apiFetch("/projects/all").then(setProjects).catch(() => {});
-    apiFetch("/user/all").then(setUsers).catch(e => toast("Failed to load users: " + e.message, "error"));
-  }, []);
-
-  // Pre-select self for TEAM_MEMBER
-  useEffect(() => {
-    if (isMember && user?.user_id) setSelectedMemberId(user.user_id);
-  }, [isMember, user]);
-
-  async function generateTasks() {
-    setL("tasks")(true);
-    try {
-      const res = await apiFetch(`/ai/generate-tasks?project_title=${encodeURIComponent(projectTitle)}&project_id=${projectId}`, { method: "POST" });
-      setAiResult(res.ai_tasks);
-    } catch (ex) { toast(ex.message, "error"); }
-    setL("tasks")(false);
-  }
-
-  async function suggestTeam() {
-    setL("team")(true);
-    try {
-      const res = await apiFetch(`/ai/suggest-team?project_title=${encodeURIComponent(teamProjectTitle)}&project_description=${encodeURIComponent(teamProjectDesc)}`, { method: "POST" });
-      setTeamSuggest(res.suggestion);
-    } catch (ex) { toast(ex.message, "error"); }
-    setL("team")(false);
-  }
-
-  async function summarizeMeeting() {
-    setL("meeting")(true);
-    try {
-      const res = await apiFetch(`/meeting/summarize?transcript=${encodeURIComponent(transcript)}`, { method: "POST" });
-      setMeetingResult(res.meeting_summary);
-    } catch (ex) { toast(ex.message, "error"); }
-    setL("meeting")(false);
-  }
-
-  // FIX: use POST, and accept multiple response key shapes
-  async function generateOverallReport() {
-    setL("overallReport")(true);
-    setOverallReport(null);
-    try {
-      const res = await apiFetch("/reports/generate", { method: "POST" });
-      // Backend may return { report: "..." } or { overall_report: "..." } or { summary: "..." }
-      const text = res.report ?? res.overall_report ?? res.summary ?? res.content ?? JSON.stringify(res, null, 2);
-      setOverallReport(text);
-    } catch (ex) { toast("Report failed: " + ex.message, "error"); }
-    setL("overallReport")(false);
-  }
-
-  // FIX: individual member report — calls /reports/member/{user_id}
-  async function generateMemberReport() {
-    if (!selectedMemberId) { toast("Please select a member", "error"); return; }
-    setL("memberReport")(true);
-    setMemberReport(null);
-    try {
-      const res = await apiFetch(`/reports/member/${selectedMemberId}`, { method: "POST" });
-      // Accept multiple key shapes
-      const text = res.report ?? res.member_report ?? res.summary ?? res.content ?? JSON.stringify(res, null, 2);
-      setMemberReport(text);
-    } catch (ex) { toast("Member report failed: " + ex.message, "error"); }
-    setL("memberReport")(false);
-  }
-
-  const ReportBox = ({ title, content }) => (
+// ─── ReportBox ────────────────────────────────────────────────────────────────
+function ReportBox({ title, content }) {
+  return (
     <div style={{ marginTop: 16, background: "#0a0d12", borderRadius: 10, border: `1px solid ${PALETTE.border}`, overflow: "hidden" }}>
       <div style={{ padding: "8px 14px", borderBottom: `1px solid ${PALETTE.border}`, display: "flex", alignItems: "center", gap: 8 }}>
         <div style={{ width: 8, height: 8, borderRadius: "50%", background: PALETTE.success }} />
         <span style={{ fontSize: 11, color: PALETTE.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{title}</span>
       </div>
       <div style={{ padding: 14, maxHeight: 400, overflowY: "auto" }}>
-        <p style={{ color: PALETTE.text, fontSize: 13, margin: 0, whiteSpace: "pre-wrap", lineHeight: 1.7 }}>{content}</p>
+        <p style={{
+          color: content?.startsWith("Report generation failed") || content?.startsWith("error") ? PALETTE.danger : PALETTE.text,
+          fontSize: 13, margin: 0, whiteSpace: "pre-wrap", lineHeight: 1.8,
+        }}>{content}</p>
       </div>
     </div>
   );
+}
 
+// AI TOOLS
+function AIPage({ toast, user }) {
+  // ── State ──────────────────────────────────────────────────────────────────
+  const [projects, setProjects] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState({});
+  const set = k => v => setLoading(l => ({ ...l, [k]: v }));
+
+  // AI Task Assigner
+  const [projectId, setProjectId] = useState("");
+  const [projectTitle, setProjectTitle] = useState("");
+  const [aiResult, setAiResult] = useState(null);
+
+  // AI Team Builder
+  const [teamProjectTitle, setTeamProjectTitle] = useState("");
+  const [teamProjectDesc, setTeamProjectDesc] = useState("");
+  const [teamSuggest, setTeamSuggest] = useState(null);
+
+  // Meeting Summarizer
+  const [transcript, setTranscript] = useState("");
+  const [meetingResult, setMeetingResult] = useState(null);
+
+  // Member Report
+  const [selectedMemberId, setSelectedMemberId] = useState("");
+  const [memberReport, setMemberReport] = useState(null);
+
+  // Overall Report
+  const [overallReport, setOverallReport] = useState(null);
+
+  // ── Role flags ─────────────────────────────────────────────────────────────
+  const role = user?.role;
+  const canMemberReport = ["PROJECT_SUCCESS_MANAGER", "PROJECT_MANAGER", "TEAM_LEAD"].includes(role);
+  const isMember = role === "TEAM_MEMBER";
+  const canOverallReport = ["PROJECT_SUCCESS_MANAGER", "PROJECT_MANAGER"].includes(role);
+
+  // Orchestrator
+  const [orchProjectId, setOrchProjectId] = useState("");
+  const [orchProjectTitle, setOrchProjectTitle] = useState("");
+  const [orchResult, setOrchResult] = useState(null);
+
+  // AI Productivity Analysis
+  const [productivityAnalysis, setProductivityAnalysis] = useState(null);
+  // ── Data loading ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    apiFetch("/projects/all").then(setProjects).catch(() => {});
+    apiFetch("/user/all").then(setUsers).catch(() => {});
+  }, []);
+
+  // ── AI Task Assigner ───────────────────────────────────────────────────────
+  async function generateTasks() {
+    if (!projectId) { toast("Please select a project", "error"); return; }
+    set("tasks")(true);
+    try {
+      const res = await apiFetch(
+        `/ai/generate-tasks?project_title=${encodeURIComponent(projectTitle)}&project_id=${projectId}`,
+        { method: "POST" }
+      );
+      setAiResult(res.ai_tasks);
+      toast("Tasks generated and assigned!", "success");
+    } catch (ex) { toast(ex.message, "error"); }
+    set("tasks")(false);
+  }
+
+  // ── AI Team Builder ────────────────────────────────────────────────────────
+  async function suggestTeam() {
+    if (!teamProjectTitle) { toast("Please enter a project title", "error"); return; }
+    set("team")(true);
+    try {
+      const res = await apiFetch(
+        `/ai/suggest-team?project_title=${encodeURIComponent(teamProjectTitle)}&project_description=${encodeURIComponent(teamProjectDesc)}`,
+        { method: "POST" }
+      );
+      setTeamSuggest(res.suggestion);
+      toast("Team suggestion ready!", "success");
+    } catch (ex) { toast(ex.message, "error"); }
+    set("team")(false);
+  }
+
+  // ── Meeting Summarizer ─────────────────────────────────────────────────────
+  async function summarizeMeeting() {
+    if (!transcript.trim()) { toast("Please paste a transcript", "error"); return; }
+    set("meeting")(true);
+    try {
+      const res = await apiFetch(
+        `/meeting/summarize?transcript=${encodeURIComponent(transcript)}`,
+        { method: "POST" }
+      );
+      setMeetingResult(res.meeting_summary);
+    } catch (ex) { toast(ex.message, "error"); }
+    set("meeting")(false);
+  }
+
+  
+  // ── Member Report ──────────────────────────────────────────────────────────
+  async function generateMemberReport() {
+    const targetId = isMember ? user?.user_id : selectedMemberId;
+    if (!targetId) { toast("Please select a member", "error"); return; }
+    set("memberReport")(true);
+    try {
+      const res = await apiFetch(`/reports/member/${targetId}`);
+      setMemberReport(res.report || res.error);
+    } catch (ex) { toast(ex.message, "error"); }
+    set("memberReport")(false);
+  }
+
+  // ── Overall Report ─────────────────────────────────────────────────────────
+  async function generateOverallReport() {
+    set("overallReport")(true);
+    try {
+      const res = await apiFetch("/reports/generate");
+      setOverallReport(res.report || res.error);
+    } catch (ex) { toast(ex.message, "error"); }
+    set("overallReport")(false);
+  }
+  // ── Orchestrator Full Workflow ─────────────────────────────────────────────
+    async function runFullWorkflow() {
+      if (!orchProjectId) { toast("Please select a project", "error"); return; }
+      set("workflow")(true);
+      try {
+        const res = await apiFetch(
+          `/orchestrator/run-workflow?project_title=${encodeURIComponent(orchProjectTitle)}&project_id=${orchProjectId}`,
+          { method: "POST" }
+        );
+        setOrchResult(res);
+        toast("Full workflow completed!", "success");
+      } catch (ex) { toast(ex.message, "error"); }
+      set("workflow")(false);
+    }
+
+    // ── AI Productivity Analysis ───────────────────────────────────────────────
+    async function runProductivityAnalysis() {
+      set("prodAnalysis")(true);
+      try {
+        const res = await apiFetch("/productivity/analyze");
+        setProductivityAnalysis(res.analysis || res.error);
+      } catch (ex) { toast(ex.message, "error"); }
+      set("prodAnalysis")(false);
+    }
+  // ── Download as text file ──────────────────────────────────────────────────
+  function downloadReportAsPDF(content, filename) {
+    const blob = new Blob([content], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div>
       <h2 style={{ margin: "0 0 20px", color: PALETTE.text }}>AI Tools</h2>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 20 }}>
 
-        {/* AI Team Suggester */}
+        {/* ── AI Team Builder ── */}
         <div style={styles.card}>
           <div style={{ fontSize: 24, marginBottom: 10 }}>🧠</div>
           <h3 style={{ margin: "0 0 6px", color: PALETTE.text, fontSize: 15 }}>AI Team Builder</h3>
@@ -721,14 +698,14 @@ function AIPage({ toast, user }) {
           {teamSuggest && (
             <div style={{ marginTop: 16 }}>
               <div style={{ background: "#0f1117", borderRadius: 8, padding: 12, marginBottom: 10 }}>
-                <div style={{ fontSize: 12, color: PALETTE.muted, marginBottom: 6 }}>Suggested Team Lead</div>
+                <div style={{ fontSize: 12, color: PALETTE.muted, marginBottom: 6 }}>⭐ Suggested Team Lead</div>
                 <div style={{ color: PALETTE.accent, fontWeight: 700, fontSize: 14 }}>{teamSuggest.suggested_team_lead?.name}</div>
                 <div style={{ color: PALETTE.muted, fontSize: 12, marginTop: 4 }}>{teamSuggest.suggested_team_lead?.reason}</div>
               </div>
-              <div style={{ fontSize: 12, color: PALETTE.muted, marginBottom: 8 }}>Suggested Members</div>
+              <div style={{ fontSize: 12, color: PALETTE.muted, marginBottom: 8 }}>👥 Suggested Members</div>
               {teamSuggest.suggested_members?.map((m, i) => (
                 <div key={i} style={{ background: "#0f1117", borderRadius: 8, padding: 10, marginBottom: 8 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
                     <span style={{ color: PALETTE.text, fontWeight: 600, fontSize: 13 }}>{m.name}</span>
                     <span style={badge("TEAM_MEMBER")}>{m.skills}</span>
                   </div>
@@ -744,7 +721,7 @@ function AIPage({ toast, user }) {
           )}
         </div>
 
-        {/* Generate Tasks per person */}
+        {/* ── AI Task Assigner ── */}
         <div style={styles.card}>
           <div style={{ fontSize: 24, marginBottom: 10 }}>🤖</div>
           <h3 style={{ margin: "0 0 6px", color: PALETTE.text, fontSize: 15 }}>AI Task Assigner</h3>
@@ -768,7 +745,7 @@ function AIPage({ toast, user }) {
                     <span style={badge(t.priority)}>{t.priority}</span>
                   </div>
                   <div style={{ color: PALETTE.muted, fontSize: 12, marginBottom: 6 }}>{t.description}</div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 4 }}>
                     <span style={{ fontSize: 12, color: PALETTE.accent }}>👤 {t.assigned_to}</span>
                     {t.reason && <span style={{ fontSize: 11, color: PALETTE.muted, fontStyle: "italic" }}>{t.reason}</span>}
                   </div>
@@ -776,26 +753,154 @@ function AIPage({ toast, user }) {
               ))}
             </div>
           )}
+          {aiResult && !Array.isArray(aiResult) && (
+            <div style={{ marginTop: 12, color: PALETTE.danger, fontSize: 13 }}>
+              {typeof aiResult === "object" ? aiResult.error : aiResult}
+            </div>
+          )}
         </div>
 
-        {/* Meeting Summarizer */}
+        {/* ── Meeting Summarizer ── */}
         <div style={styles.card}>
           <div style={{ fontSize: 24, marginBottom: 10 }}>📝</div>
           <h3 style={{ margin: "0 0 6px", color: PALETTE.text, fontSize: 15 }}>Meeting Summarizer</h3>
           <p style={{ color: PALETTE.muted, fontSize: 13, margin: "0 0 16px" }}>
             Paste a meeting transcript and get an AI-generated summary of decisions and action items.
           </p>
-          <Textarea label="Transcript" value={transcript} onChange={e => setTranscript(e.target.value)} placeholder="Paste meeting transcript here…" style={{ height: 120 }} />
+          <Textarea label="Transcript" value={transcript} onChange={e => setTranscript(e.target.value)}
+            placeholder="Paste meeting transcript here…" style={{ height: 120 }} />
           <Btn loading={loading.meeting} onClick={summarizeMeeting} style={{ width: "100%" }}>Summarize Meeting</Btn>
           {meetingResult && (
-            <div style={{ marginTop: 16, background: "#0f1117", borderRadius: 8, padding: 12 }}>
-              <div style={{ fontSize: 12, color: PALETTE.muted, marginBottom: 8 }}>Summary</div>
-              <p style={{ color: PALETTE.text, fontSize: 13, margin: 0, whiteSpace: "pre-wrap" }}>{meetingResult}</p>
+            <ReportBox title="Meeting Summary" content={meetingResult} />
+          )}
+        </div>
+        
+        {/* ── Full Project Workflow Orchestrator ── */}
+        <div style={styles.card}>
+          <div style={{ fontSize: 24, marginBottom: 10 }}>⚡</div>
+          <h3 style={{ margin: "0 0 6px", color: PALETTE.text, fontSize: 15 }}>Full Project Workflow</h3>
+          <p style={{ color: PALETTE.muted, fontSize: 13, margin: "0 0 16px" }}>
+            The Orchestrator Agent runs a complete automated workflow — generates all tasks,
+            assigns them to the right people, and produces a full project report in one click.
+          </p>
+          <Select label="Project" value={orchProjectId} onChange={e => {
+            setOrchProjectId(e.target.value);
+            const p = projects.find(p => p.project_id === e.target.value);
+            if (p) setOrchProjectTitle(p.title);
+          }} options={[{ value: "", label: "Select project…" }, ...projects.map(p => ({ value: p.project_id, label: p.title }))]} />
+          <Btn loading={loading.workflow} onClick={runFullWorkflow} style={{ width: "100%", background: "linear-gradient(135deg, #5b8af0, #9b8af0)" }}>
+            ⚡ Run Full Workflow
+          </Btn>
+          {orchResult && (
+            <div style={{ marginTop: 16 }}>
+              {/* Tasks */}
+              {Array.isArray(orchResult.generated_tasks) && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, color: PALETTE.muted, marginBottom: 8, fontWeight: 600 }}>
+                    ✅ {orchResult.generated_tasks.length} Tasks Generated & Assigned
+                  </div>
+                  {orchResult.generated_tasks.map((t, i) => (
+                    <div key={i} style={{ background: "#0f1117", borderRadius: 8, padding: 10, marginBottom: 6 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                        <span style={{ color: PALETTE.text, fontWeight: 600, fontSize: 13 }}>{t.title}</span>
+                        <span style={badge(t.priority)}>{t.priority}</span>
+                      </div>
+                      <span style={{ fontSize: 12, color: PALETTE.accent }}>👤 {t.assigned_to}</span>
+                      {t.reason && <div style={{ fontSize: 11, color: PALETTE.muted, fontStyle: "italic", marginTop: 3 }}>{t.reason}</div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Report */}
+              {orchResult.report && (
+                <>
+                  <ReportBox title="Auto-Generated Project Report" content={orchResult.report} />
+                  <button
+                    onClick={() => downloadReportAsPDF(orchResult.report, "workflow-report.txt")}
+                    style={{
+                      marginTop: 12, width: "100%", padding: "9px 18px", borderRadius: 8,
+                      border: `1px solid ${PALETTE.success}`, cursor: "pointer", fontSize: 13,
+                      fontWeight: 600, background: "transparent", color: PALETTE.success,
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    }}
+                  >
+                    ⬇ Download Report
+                  </button>
+                </>
+              )}
             </div>
           )}
         </div>
 
-        {/* ── INDIVIDUAL MEMBER REPORT ── visible to managers, leads, and members (own only) */}
+        {/* ── AI Productivity Analysis ── */}
+        <div style={styles.card}>
+          <div style={{ fontSize: 24, marginBottom: 10 }}>🧬</div>
+          <h3 style={{ margin: "0 0 6px", color: PALETTE.text, fontSize: 15 }}>AI Productivity Analysis</h3>
+          <p style={{ color: PALETTE.muted, fontSize: 13, margin: "0 0 16px" }}>
+            The Productivity Agent analyses every team member's workload, detects burnout risk,
+            evaluates task distribution and gives actionable recommendations.
+          </p>
+          <Btn loading={loading.prodAnalysis} onClick={runProductivityAnalysis} style={{ width: "100%", background: "linear-gradient(135deg, #4caf7d, #5b8af0)" }}>
+            🧬 Analyse Team Productivity
+          </Btn>
+          {productivityAnalysis && typeof productivityAnalysis === "object" && (
+            <div style={{ marginTop: 16 }}>
+              {/* Team Health */}
+              {productivityAnalysis.team_health && (
+                <div style={{ background: "#1a2540", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, color: PALETTE.accent, fontWeight: 600, marginBottom: 4 }}>🏥 Team Health</div>
+                  <div style={{ fontSize: 13, color: PALETTE.text }}>{productivityAnalysis.team_health}</div>
+                </div>
+              )}
+              {/* At Risk */}
+              {productivityAnalysis.at_risk_members?.length > 0 && (
+                <div style={{ background: "#2e1a1a", borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, color: PALETTE.danger, fontWeight: 600, marginBottom: 4 }}>⚠ At Risk Members</div>
+                  <div style={{ fontSize: 13, color: PALETTE.text }}>{productivityAnalysis.at_risk_members.join(", ")}</div>
+                </div>
+              )}
+              {/* Top Performer */}
+              {productivityAnalysis.top_performer && (
+                <div style={{ background: "#1a2e24", borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, color: PALETTE.success, fontWeight: 600, marginBottom: 4 }}>🏆 Top Performer</div>
+                  <div style={{ fontSize: 13, color: PALETTE.text }}>{productivityAnalysis.top_performer}</div>
+                </div>
+              )}
+              {/* Per Member */}
+              <div style={{ fontSize: 12, color: PALETTE.muted, marginBottom: 8, fontWeight: 600 }}>Individual Analysis</div>
+              {productivityAnalysis.members?.map((m, i) => {
+                const riskColor = { LOW: PALETTE.success, MEDIUM: PALETTE.warning, HIGH: PALETTE.danger }[m.burnout_risk] || PALETTE.muted;
+                const workloadColor = { UNDERLOADED: PALETTE.muted, BALANCED: PALETTE.success, OVERLOADED: PALETTE.danger }[m.workload_status] || PALETTE.muted;
+                return (
+                  <div key={i} style={{ background: "#0f1117", borderRadius: 8, padding: 12, marginBottom: 10, border: `1px solid ${PALETTE.border}` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <span style={{ color: PALETTE.text, fontWeight: 700, fontSize: 14 }}>{m.name}</span>
+                      <span style={{ color: PALETTE.accent, fontWeight: 700, fontSize: 16 }}>{m.productivity_score}<span style={{ fontSize: 11, color: PALETTE.muted }}>/100</span></span>
+                    </div>
+                    {/* Score bar */}
+                    <div style={{ background: PALETTE.border, borderRadius: 99, height: 5, marginBottom: 10, overflow: "hidden" }}>
+                      <div style={{ width: `${m.productivity_score}%`, height: "100%", background: PALETTE.accent, borderRadius: 99 }} />
+                    </div>
+                    <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 99, background: "#1a1a2e", color: riskColor, fontWeight: 600 }}>
+                        🔥 Burnout: {m.burnout_risk}
+                      </span>
+                      <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 99, background: "#1a1a2e", color: workloadColor, fontWeight: 600 }}>
+                        ⚖ Workload: {m.workload_status}
+                      </span>
+                    </div>
+                    {m.strengths && <div style={{ fontSize: 12, color: PALETTE.success, marginBottom: 4 }}>💪 {m.strengths}</div>}
+                    {m.recommendations && <div style={{ fontSize: 12, color: PALETTE.warning }}>💡 {m.recommendations}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {productivityAnalysis && typeof productivityAnalysis === "string" && (
+            <div style={{ marginTop: 12, color: PALETTE.danger, fontSize: 13 }}>{productivityAnalysis}</div>
+          )}
+        </div>
+        {/* ── Member Performance Report ── managers, leads, and members (own only) ── */}
         {(canMemberReport || isMember) && (
           <div style={styles.card}>
             <div style={{ fontSize: 24, marginBottom: 10 }}>👤</div>
@@ -805,7 +910,6 @@ function AIPage({ toast, user }) {
                 ? "Generate an AI report on your own task performance and productivity."
                 : "Generate an AI performance report for any individual team member."}
             </p>
-            {/* Managers/leads pick a member; team members see only themselves */}
             {!isMember ? (
               <Select
                 label="Select Member"
@@ -817,7 +921,7 @@ function AIPage({ toast, user }) {
                 ]}
               />
             ) : (
-              <div style={{ ...styles.card, background: PALETTE.accentSoft, marginBottom: 14, padding: "10px 14px" }}>
+              <div style={{ background: PALETTE.accentSoft, borderRadius: 8, marginBottom: 14, padding: "10px 14px" }}>
                 <span style={{ fontSize: 13, color: PALETTE.accent, fontWeight: 600 }}>
                   📋 Generating report for: {user?.name || user?.email}
                 </span>
@@ -827,15 +931,30 @@ function AIPage({ toast, user }) {
               loading={loading.memberReport}
               onClick={generateMemberReport}
               style={{ width: "100%" }}
-              variant={selectedMemberId ? "primary" : "ghost"}
+              variant={selectedMemberId || isMember ? "primary" : "ghost"}
             >
               Generate Member Report
             </Btn>
-            {memberReport && <ReportBox title="Member Performance Report" content={memberReport} />}
+            {memberReport && (
+              <>
+                <ReportBox title="Member Performance Report" content={memberReport} />
+                <button
+                  onClick={() => downloadReportAsPDF(memberReport, `member-report-${selectedMemberId || "me"}.txt`)}
+                  style={{
+                    marginTop: 12, width: "100%", padding: "9px 18px", borderRadius: 8,
+                    border: `1px solid ${PALETTE.success}`, cursor: "pointer", fontSize: 13,
+                    fontWeight: 600, background: "transparent", color: PALETTE.success,
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  }}
+                >
+                  ⬇ Download Report
+                </button>
+              </>
+            )}
           </div>
         )}
 
-        {/* ── OVERALL PROJECT REPORT ── PROJECT_SUCCESS_MANAGER and PROJECT_MANAGER only */}
+        {/* ── Overall Project Report ── PROJECT_SUCCESS_MANAGER and PROJECT_MANAGER only ── */}
         {canOverallReport && (
           <div style={styles.card}>
             <div style={{ fontSize: 24, marginBottom: 10 }}>📊</div>
@@ -849,10 +968,9 @@ function AIPage({ toast, user }) {
             {overallReport && (
               <>
                 <ReportBox title="Overall Project Report" content={overallReport} />
-                {/* Download as PDF — PROJECT_SUCCESS_MANAGER only */}
                 {role === "PROJECT_SUCCESS_MANAGER" && (
                   <button
-                    onClick={() => downloadReportAsPDF(overallReport, "overall-project-report.pdf")}
+                    onClick={() => downloadReportAsPDF(overallReport, "overall-project-report.txt")}
                     style={{
                       marginTop: 12, width: "100%", padding: "9px 18px", borderRadius: 8,
                       border: `1px solid ${PALETTE.success}`, cursor: "pointer", fontSize: 13,
@@ -860,7 +978,7 @@ function AIPage({ toast, user }) {
                       display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                     }}
                   >
-                    ⬇ Download as PDF
+                    ⬇ Download Report
                   </button>
                 )}
               </>

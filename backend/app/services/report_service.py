@@ -1,121 +1,110 @@
-"""
-report_service.py
-Fetches data from DB, formats it, calls the ReportAgent.
-Drop this into app/services/report_service.py
-"""
 from sqlalchemy.orm import Session
-from app.agents.report_agent import ReportAgent
+from app.models.task import Task
+from app.models.productivity import Productivity
+from app.models.user import User
+from app.models.project import Project
+from langchain_groq import ChatGroq
+from dotenv import load_dotenv
+import os
 
+load_dotenv()
 
-def _build_overall_context(db: Session) -> str:
-    """Pull all projects, tasks, users and format into a prompt string."""
-    from app.models.project import Project
-    from app.models.task import Task
-    from app.models.user import User
-    from app.models.productivity import Productivity
-
-    projects = db.query(Project).all()
-    tasks = db.query(Task).all()
-    users = db.query(User).all()
-
-    # Try productivity model — skip gracefully if table doesn't exist
+def generate_report(db: Session):
     try:
+        tasks = db.query(Task).all()
+        users = db.query(User).all()
         productivity = db.query(Productivity).all()
-        prod_map = {str(p.user_id): p.tasks_completed for p in productivity}
-    except Exception:
-        prod_map = {}
+        projects = db.query(Project).all()
 
-    user_map = {str(u.user_id): u.name for u in users}
+        # Build lookup maps
+        user_map = {str(u.user_id): u.name for u in users}
+        project_map = {str(p.project_id): p.title for p in projects}
 
-    lines = []
-
-    lines.append("=== PROJECTS ===")
-    if projects:
-        for p in projects:
-            lines.append(
-                f"- {p.title} | status: {getattr(p,'status','N/A')} "
-                f"| start: {getattr(p,'start_date','N/A')} "
-                f"| end: {getattr(p,'end_date','N/A')}"
-            )
-    else:
-        lines.append("No projects found.")
-
-    lines.append("\n=== TASKS ===")
-    if tasks:
+        # Task summary with names
+        task_summary = []
         for t in tasks:
-            assignee = user_map.get(str(getattr(t, "assigned_to", "")), "Unassigned")
-            lines.append(
-                f"- {t.title} | status: {t.status} | priority: {t.priority} "
-                f"| assigned_to: {assignee} "
-                f"| due: {getattr(t,'due_date','N/A')} "
-                f"| points: {getattr(t,'productivity_points',0)}"
-            )
-    else:
-        lines.append("No tasks found.")
+            task_summary.append({
+                "title": t.title,
+                "status": t.status,
+                "priority": t.priority,
+                "assigned_to": user_map.get(str(t.assigned_to), "Unknown"),
+                "project": project_map.get(str(t.project_id), "Unknown"),
+            })
 
-    lines.append("\n=== TEAM MEMBERS ===")
-    if users:
-        for u in users:
-            completed = prod_map.get(str(u.user_id), 0)
-            lines.append(
-                f"- {u.name} | role: {u.role} "
-                f"| skills: {getattr(u,'skills','N/A')} "
-                f"| tasks_completed: {completed}"
-            )
-    else:
-        lines.append("No users found.")
+        # Status counts
+        total = len(tasks)
+        completed = len([t for t in tasks if t.status == "COMPLETED"])
+        in_progress = len([t for t in tasks if t.status == "IN_PROGRESS"])
+        pending = len([t for t in tasks if t.status == "PENDING"])
+        blocked = len([t for t in tasks if t.status == "BLOCKED"])
 
-    return "\n".join(lines)
+        # Productivity with names
+        productivity_summary = []
+        for p in productivity:
+            name = user_map.get(str(p.user_id), "Unknown")
+            productivity_summary.append({
+                "name": name,
+                "completed_tasks": p.completed_tasks,
+                "points": p.productivity_points,
+            })
 
+        # Sort by points descending
+        productivity_summary.sort(key=lambda x: x["points"], reverse=True)
 
-def _build_member_context(db: Session, user_id: str) -> str:
-    """Pull one member's data and their tasks."""
-    from app.models.user import User
-    from app.models.task import Task
-    from app.models.productivity import Productivity
-
-    user = db.query(User).filter(User.user_id == user_id).first()
-    if not user:
-        return f"No member found with id {user_id}"
-
-    tasks = db.query(Task).filter(Task.assigned_to == user_id).all()
-
-    try:
-        prod = db.query(Productivity).filter(
-            Productivity.user_id == user_id
-        ).first()
-        tasks_completed = prod.tasks_completed if prod else 0
-    except Exception:
-        tasks_completed = len([t for t in tasks if t.status == "COMPLETED"])
-
-    lines = []
-    lines.append("=== MEMBER PROFILE ===")
-    lines.append(f"Name: {user.name}")
-    lines.append(f"Role: {user.role}")
-    lines.append(f"Skills: {getattr(user, 'skills', 'N/A')}")
-    lines.append(f"Tasks Completed (total): {tasks_completed}")
-
-    lines.append("\n=== ASSIGNED TASKS ===")
-    if tasks:
+        # Member-level breakdown
+        member_breakdown = {}
         for t in tasks:
-            lines.append(
-                f"- {t.title} | status: {t.status} | priority: {t.priority} "
-                f"| due: {getattr(t,'due_date','N/A')} "
-                f"| points: {getattr(t,'productivity_points',0)}"
-            )
-    else:
-        lines.append("No tasks assigned.")
+            name = user_map.get(str(t.assigned_to), "Unknown")
+            if name not in member_breakdown:
+                member_breakdown[name] = {"PENDING": 0, "IN_PROGRESS": 0, "COMPLETED": 0, "BLOCKED": 0}
+            member_breakdown[name][t.status] = member_breakdown[name].get(t.status, 0) + 1
 
-    return "\n".join(lines)
+        member_text = "\n".join([
+            f"  - {name}: {counts.get('COMPLETED',0)} completed, {counts.get('IN_PROGRESS',0)} in progress, {counts.get('PENDING',0)} pending, {counts.get('BLOCKED',0)} blocked"
+            for name, counts in member_breakdown.items()
+        ])
 
+        llm = ChatGroq(
+            model="llama-3.1-8b-instant",
+            groq_api_key=os.getenv("GROQ_API_KEY")
+        )
 
-def generate_report(db: Session) -> str:
-    context = _build_overall_context(db)
-    agent = ReportAgent()
-    return agent.generate_report(context)
+        prompt = f"""
+Generate a professional project management report based on the following real data:
 
+OVERALL STATS:
+- Total Tasks: {total}
+- Completed: {completed}
+- In Progress: {in_progress}
+- Pending: {pending}
+- Blocked: {blocked}
+- Completion Rate: {round((completed/total*100) if total > 0 else 0, 1)}%
 
-def generate_member_report(db: Session, user_id: str) -> str:
-    context = _build_member_context(db, user_id)
-    agent = ReportAgent()
-    return agent.generate_member_report(context)
+PROJECTS: {[p.title for p in projects]}
+
+MEMBER PERFORMANCE:
+{member_text}
+
+TOP PERFORMERS BY POINTS:
+{chr(10).join([f"  {i+1}. {p['name']} — {p['points']} pts ({p['completed_tasks']} tasks)" for i, p in enumerate(productivity_summary[:5])])}
+
+ALL TASKS:
+{chr(10).join([f"  - [{t['status']}] {t['title']} → {t['assigned_to']} ({t['project']})" for t in task_summary])}
+
+Write a detailed professional report with these sections:
+1. Executive Summary
+2. Project Progress Overview
+3. Member Performance Analysis (name each person)
+4. Completed Tasks
+5. Delayed or Blocked Tasks
+6. Top Performers
+7. Recommendations
+
+Use real names, real numbers. Be specific and actionable.
+"""
+
+        response = llm.invoke(prompt)
+        return response.content
+
+    except Exception as e:
+        return f"Report generation failed: {str(e)}"

@@ -62,3 +62,8 @@ app.include_router(productivity_router, prefix="/productivity", tags=["Productiv
 app.include_router(report_router, prefix="/reports", tags=["Reports"])
 app.include_router(orchestrator_router, prefix="/orchestrator", tags=["Orchestrator"])
 app.include_router(meeting_router, prefix="/meeting", tags=["Meeting Agent"])
+app.include_router(
+    orchestrator_router,
+    prefix="/orchestrator",
+    tags=["Orchestrator"]
+)
