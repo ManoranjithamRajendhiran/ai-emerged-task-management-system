@@ -17,6 +17,8 @@ from app.api.productivity import router as productivity_router
 from app.api.report import router as report_router
 from app.api.orchestrator import router as orchestrator_router
 from app.api.meeting import router as meeting_router
+from app.models.chat import ChatRoom, ChatRoomMember, ChatMessage
+from app.api.chat import router as chat_router
 import os
 from dotenv import load_dotenv
 load_dotenv()
@@ -62,8 +64,4 @@ app.include_router(productivity_router, prefix="/productivity", tags=["Productiv
 app.include_router(report_router, prefix="/reports", tags=["Reports"])
 app.include_router(orchestrator_router, prefix="/orchestrator", tags=["Orchestrator"])
 app.include_router(meeting_router, prefix="/meeting", tags=["Meeting Agent"])
-app.include_router(
-    orchestrator_router,
-    prefix="/orchestrator",
-    tags=["Orchestrator"]
-)
+app.include_router(chat_router, prefix="/chat", tags=["Chat"])
