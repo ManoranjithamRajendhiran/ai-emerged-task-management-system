@@ -61,11 +61,9 @@ def update_task_status(
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
+    old_status = task.status
     task.status = status_update.status
-    update_productivity(db, task.assigned_to, status_update.status)
-
-    if status_update.status == "COMPLETED":
-        task.productivity_points += 10
+    update_productivity(db, task, old_status, status_update.status)
 
     db.commit()
     return {"message": "Task status updated"}
