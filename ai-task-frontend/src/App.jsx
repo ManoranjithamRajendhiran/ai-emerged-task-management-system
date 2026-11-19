@@ -1026,37 +1026,38 @@ function AIPage({ toast, user }) {
 
 // ── PRODUCTIVITY ── Full CRUD: view + update + log hours + add entry ──────────
 function ProductivityPage({ toast, user }) {
-  const [data, setData]     = useState([]);
-  const [users, setUsers]   = useState([]);
+  const [data, setData]       = useState([]);
+  const [users, setUsers]     = useState([]);
+  const [tasks, setTasks]     = useState([]);   // NEW: real tasks, used to count completed work
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [saving, setSaving]   = useState(false);
 
   // Modal state: null | "edit" | "log" | "add"
-  const [modal, setModal]   = useState(null);
-  const [selected, setSelected] = useState(null); // the productivity record being acted on
+  const [modal, setModal]       = useState(null);
+  const [selected, setSelected] = useState(null);
 
-  // Edit form — update tasks_completed + productivity_score directly
   const [editForm, setEditForm] = useState({ tasks_completed: 0, productivity_score: 0, notes: "" });
-
-  // Log-hours form — adds hours_worked to a record
-  const [logForm, setLogForm] = useState({ hours_worked: 0, tasks_completed_delta: 0, notes: "" });
-
-  // Add new record form (for a user who has no record yet)
-  const [addForm, setAddForm] = useState({ user_id: "", tasks_completed: 0, productivity_score: 0, hours_worked: 0 });
+  const [logForm, setLogForm]   = useState({ hours_worked: 0, tasks_completed_delta: 0, notes: "" });
+  const [addForm, setAddForm]   = useState({ user_id: "", tasks_completed: 0, productivity_score: 0, hours_worked: 0 });
 
   // Role guards
-  const canView   = ["PROJECT_SUCCESS_MANAGER", "PROJECT_MANAGER"].includes(user?.role);
-  const canEdit   = ["PROJECT_SUCCESS_MANAGER", "PROJECT_MANAGER"].includes(user?.role);
-  const canAdd    = user?.role === "PROJECT_SUCCESS_MANAGER";
+  const canView = ["PROJECT_SUCCESS_MANAGER", "PROJECT_MANAGER"].includes(user?.role);
+  const canEdit = ["PROJECT_SUCCESS_MANAGER", "PROJECT_MANAGER"].includes(user?.role);
+  const canAdd  = user?.role === "PROJECT_SUCCESS_MANAGER";
 
   // ── Load ──────────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
     if (!canView) { setLoading(false); return; }
     setLoading(true);
     try {
-      const [p, u] = await Promise.all([apiFetch("/productivity/all"), apiFetch("/user/all")]);
+      const [p, u, t] = await Promise.all([
+        apiFetch("/productivity/all"),
+        apiFetch("/user/all"),
+        apiFetch("/tasks/all"),
+      ]);
       setData(p);
       setUsers(u);
+      setTasks(t);
     } catch { }
     setLoading(false);
   }, [canView]);
@@ -1065,14 +1066,28 @@ function ProductivityPage({ toast, user }) {
 
   // ── Helpers ───────────────────────────────────────────────────────────────
   const userName = id => users.find(u => u.user_id === id)?.name || id?.slice(0, 8) + "…";
-  const total    = data.reduce((a, d) => a + (d.tasks_completed || 0), 0);
-  const totalHrs = data.reduce((a, d) => a + (d.hours_worked   || 0), 0);
-  const top      = data.reduce((a, d) => (!a || (d.tasks_completed || 0) > (a.tasks_completed || 0)) ? d : a, null);
+
+  // Combine productivity records with the real completed-task count from /tasks/all.
+  // If the productivity table was never updated (shows 0), the real count is used instead.
+  const rows = data.map(d => {
+    const done = tasks.filter(t => t.assigned_to === d.user_id && t.status === "COMPLETED").length;
+    return { ...d, tasks_completed: Math.max(d.tasks_completed || 0, done) };
+  });
+
+  const total    = rows.reduce((a, d) => a + (d.tasks_completed || 0), 0);
+  const totalHrs = rows.reduce((a, d) => a + (d.hours_worked || 0), 0);
+
+  // Top performer: highest tasks (score as tie-breaker). null if nobody has done anything.
+  const top = rows.reduce((a, d) => {
+    const dv = (d.tasks_completed || 0) * 1000 + (d.productivity_score || 0);
+    const av = a ? (a.tasks_completed || 0) * 1000 + (a.productivity_score || 0) : 0;
+    return dv > av ? d : a;
+  }, null);
 
   function openEdit(record) {
     setSelected(record);
     setEditForm({
-      tasks_completed:   record.tasks_completed   || 0,
+      tasks_completed:    record.tasks_completed    || 0,
       productivity_score: record.productivity_score || 0,
       notes: "",
     });
@@ -1093,7 +1108,7 @@ function ProductivityPage({ toast, user }) {
       await apiFetch(`/productivity/update/${selected.id || selected.user_id}`, {
         method: "PUT",
         body: JSON.stringify({
-          tasks_completed:   Number(editForm.tasks_completed),
+          tasks_completed:    Number(editForm.tasks_completed),
           productivity_score: Number(editForm.productivity_score),
           notes: editForm.notes,
         }),
@@ -1108,7 +1123,7 @@ function ProductivityPage({ toast, user }) {
   // ── Log Hours — POST /productivity/log ───────────────────────────────────
   async function saveLog(e) {
     e.preventDefault();
-    if (!logForm.hours_worked && !logForm.tasks_completed_delta) {
+    if (!Number(logForm.hours_worked) && !Number(logForm.tasks_completed_delta)) {
       toast("Enter hours or tasks to log", "error"); return;
     }
     setSaving(true);
@@ -1116,9 +1131,9 @@ function ProductivityPage({ toast, user }) {
       await apiFetch("/productivity/log", {
         method: "POST",
         body: JSON.stringify({
-          user_id:                selected.user_id,
-          hours_worked:           Number(logForm.hours_worked),
-          tasks_completed_delta:  Number(logForm.tasks_completed_delta),
+          user_id:               selected.user_id,
+          hours_worked:          Number(logForm.hours_worked),
+          tasks_completed_delta: Number(logForm.tasks_completed_delta),
           notes: logForm.notes,
         }),
       });
@@ -1138,10 +1153,10 @@ function ProductivityPage({ toast, user }) {
       await apiFetch("/productivity/create", {
         method: "POST",
         body: JSON.stringify({
-          user_id:           addForm.user_id,
-          tasks_completed:   Number(addForm.tasks_completed),
+          user_id:            addForm.user_id,
+          tasks_completed:    Number(addForm.tasks_completed),
           productivity_score: Number(addForm.productivity_score),
-          hours_worked:      Number(addForm.hours_worked),
+          hours_worked:       Number(addForm.hours_worked),
         }),
       });
       toast("Productivity record created!", "success");
@@ -1170,9 +1185,7 @@ function ProductivityPage({ toast, user }) {
     </div>
   );
 
-  const max = Math.max(...data.map(x => x.tasks_completed || 0), 1);
-
-  // Score colour helper
+  const max = Math.max(...rows.map(x => x.tasks_completed || 0), 1);
   const scoreColor = s => s >= 75 ? PALETTE.success : s >= 40 ? PALETTE.warning : PALETTE.danger;
 
   return (
@@ -1190,15 +1203,15 @@ function ProductivityPage({ toast, user }) {
         <>
           {/* ── Summary stats ── */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: 14, marginBottom: 28 }}>
-            <Stat label="Total Completed"    value={total}          color={PALETTE.success} />
-            <Stat label="Members Tracked"    value={data.length}    color={PALETTE.accent}  />
-            <Stat label="Total Hours Logged" value={`${totalHrs}h`} color={PALETTE.info}    />
-            {top && <Stat label="Top Performer" value={userName(top.user_id)} color={PALETTE.warning} />}
+            <Stat label="Total Completed"    value={total}           color={PALETTE.success} />
+            <Stat label="Members Tracked"    value={rows.length}     color={PALETTE.accent}  />
+            <Stat label="Total Hours Logged" value={`${totalHrs}h`}  color={PALETTE.info}    />
+            <Stat label="Top Performer"      value={top ? userName(top.user_id) : "—"} color={PALETTE.warning} />
           </div>
 
-          {/* ── Records table ── */}
+          {/* ── Records ── */}
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            {data.map(d => {
+            {rows.map(d => {
               const pct   = ((d.tasks_completed || 0) / max) * 100;
               const score = d.productivity_score || 0;
               return (
@@ -1216,7 +1229,7 @@ function ProductivityPage({ toast, user }) {
                       </div>
                     </div>
 
-                    {/* Right: score badge + actions */}
+                    {/* Right: score + actions */}
                     <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
                       <div style={{ textAlign: "center" }}>
                         <div style={{ fontSize: 20, fontWeight: 800, color: scoreColor(score) }}>{score}</div>
@@ -1228,25 +1241,25 @@ function ProductivityPage({ toast, user }) {
                             onClick={() => openLog(d)}
                             style={{ ...styles.btn("ghost"), fontSize: 12, padding: "4px 10px" }}
                             title="Log hours / tasks"
-                          >⏱ Log</button>
+                          >Log</button>
                           <button
                             onClick={() => openEdit(d)}
                             style={{ ...styles.btn("primary"), fontSize: 12, padding: "4px 10px" }}
                             title="Edit record"
-                          >✏ Edit</button>
+                          >Edit</button>
                           {canAdd && (
                             <button
                               onClick={() => deleteRecord(d)}
                               style={{ ...styles.btn("danger"), fontSize: 12, padding: "4px 10px" }}
                               title="Delete record"
-                            >✕</button>
+                            >Delete</button>
                           )}
                         </div>
                       )}
                     </div>
                   </div>
 
-                  {/* Progress bar — tasks completed */}
+                  {/* Tasks progress bar */}
                   <div style={{ marginBottom: 4 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: PALETTE.muted, marginBottom: 4 }}>
                       <span>Tasks completed</span><span>{Math.round(pct)}%</span>
@@ -1268,7 +1281,7 @@ function ProductivityPage({ toast, user }) {
                 </div>
               );
             })}
-            {!data.length && (
+            {!rows.length && (
               <div style={{ color: PALETTE.muted, fontSize: 14, textAlign: "center", padding: 40 }}>
                 No productivity records yet.{canAdd ? ' Click "+ Add Record" to create one.' : ""}
               </div>
