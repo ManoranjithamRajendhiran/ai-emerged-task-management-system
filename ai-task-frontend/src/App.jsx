@@ -27,36 +27,37 @@ async function apiFetch(path, opts = {}) {
 
 // ─── Palette ──────────────────────────────────────────────────────────────────
 const PALETTE = {
-  bg: "#0f1117",
-  surface: "#16191f",
-  card: "#1c2028",
-  border: "#272b35",
-  accent: "#5b8af0",
-  accentSoft: "#1e2d4d",
-  text: "#e8eaf0",
-  muted: "#8891a4",
-  danger: "#e05c5c",
-  success: "#4caf7d",
-  warning: "#e8a84c",
-  info: "#5b8af0",
+  bg: "#f5f7fb",
+  surface: "#ffffff",
+  card: "#ffffff",
+  border: "#e2e6ee",
+  inset: "#f1f4f9",       // new: light background for inner boxes and inputs
+  accent: "#3b6fe0",
+  accentSoft: "#e8efff",
+  text: "#1a2233",
+  muted: "#6b7588",
+  danger: "#d64545",
+  success: "#1f9d62",
+  warning: "#c98a1a",
+  info: "#3b6fe0",
 };
 
 const badge = (status) => {
   const map = {
-    PENDING:                  { bg: "#2a2318", color: "#e8a84c" },
-    IN_PROGRESS:              { bg: "#1a2540", color: "#5b8af0" },
-    COMPLETED:                { bg: "#1a2e24", color: "#4caf7d" },
-    BLOCKED:                  { bg: "#2e1a1a", color: "#e05c5c" },
-    LOW:                      { bg: "#1a2e24", color: "#4caf7d" },
-    MEDIUM:                   { bg: "#2a2318", color: "#e8a84c" },
-    HIGH:                     { bg: "#2a1f18", color: "#e8824c" },
-    CRITICAL:                 { bg: "#2e1a1a", color: "#e05c5c" },
-    PROJECT_MANAGER:          { bg: "#1e2d4d", color: "#5b8af0" },
-    TEAM_LEAD:                { bg: "#231e3a", color: "#9b8af0" },
-    TEAM_MEMBER:              { bg: "#1e2d2d", color: "#4cafa4" },
-    PROJECT_SUCCESS_MANAGER:  { bg: "#2e2318", color: "#e8c44c" },
+    PENDING: { bg: "#fdf3e0", color: "#b7791f" },
+    IN_PROGRESS: { bg: "#e6eeff", color: "#2f5fd0" },
+    COMPLETED: { bg: "#e3f6ec", color: "#1f8a57" },
+    BLOCKED: { bg: "#fde8e8", color: "#c53030" },
+    LOW: { bg: "#e3f6ec", color: "#1f8a57" },
+    MEDIUM: { bg: "#fdf3e0", color: "#b7791f" },
+    HIGH: { bg: "#fdeee3", color: "#c05621" },
+    CRITICAL: { bg: "#fde8e8", color: "#c53030" },
+    PROJECT_MANAGER: { bg: "#e6eeff", color: "#2f5fd0" },
+    TEAM_LEAD: { bg: "#efe9fd", color: "#6b4fd0" },
+    TEAM_MEMBER: { bg: "#e0f5f2", color: "#1f8a80" },
+    PROJECT_SUCCESS_MANAGER: { bg: "#fdf3d6", color: "#a67c00" },
   };
-  const s = map[status] || { bg: "#23262e", color: "#8891a4" };
+  const s = map[status] || { bg: "#eef0f5", color: "#6b7588" };
   return {
     display: "inline-block",
     padding: "2px 10px",
@@ -74,20 +75,20 @@ const badge = (status) => {
 const styles = {
   input: {
     width: "100%", padding: "9px 12px", borderRadius: 8, border: `1px solid ${PALETTE.border}`,
-    background: "#13161d", color: PALETTE.text, fontSize: 14, outline: "none",
+    background: PALETTE.inset, color: PALETTE.text, fontSize: 14, outline: "none",
     boxSizing: "border-box",
   },
   btn: (variant = "primary") => ({
     padding: "9px 18px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 14,
     fontWeight: 600, transition: "opacity 0.15s",
-    background: variant === "primary" ? PALETTE.accent : variant === "danger" ? PALETTE.danger : "#272b35",
+    background: variant === "primary" ? PALETTE.accent : variant === "danger" ? PALETTE.danger : "#eef0f5",
     color: variant === "ghost" ? PALETTE.muted : "#fff",
   }),
-  card: { background: PALETTE.card, borderRadius: 12, border: `1px solid ${PALETTE.border}`, padding: "1.25rem" },
+  card: { background: PALETTE.card, borderRadius: 12, border: `1px solid ${PALETTE.border}`, padding: "1.25rem", boxShadow: "0 1px 3px rgba(16,24,40,0.06)" },
   label: { display: "block", fontSize: 12, color: PALETTE.muted, marginBottom: 5, fontWeight: 500 },
   select: {
     width: "100%", padding: "9px 12px", borderRadius: 8, border: `1px solid ${PALETTE.border}`,
-    background: "#13161d", color: PALETTE.text, fontSize: 14, outline: "none", boxSizing: "border-box",
+    background: PALETTE.inset, color: PALETTE.text, fontSize: 14, outline: "none", boxSizing: "border-box",
   },
 };
 
@@ -133,7 +134,7 @@ function Toast({ msg, type }) {
       position: "fixed", bottom: 24, right: 24, background: PALETTE.card,
       border: `1px solid ${colors[type] || PALETTE.border}`, borderRadius: 10,
       padding: "12px 18px", color: colors[type] || PALETTE.text, fontSize: 14, zIndex: 9999,
-      boxShadow: "0 4px 24px rgba(0,0,0,0.5)", maxWidth: 320,
+      boxShadow: "0 4px 24px rgba(15,23,42,0.15)", maxWidth: 320,
     }}>{msg}</div>
   );
 }
@@ -141,7 +142,7 @@ function Toast({ msg, type }) {
 function Modal({ title, children, onClose }) {
   return (
     <div style={{
-      position: "fixed", inset: 0, background: "rgba(0,0,0,0.7)", zIndex: 1000,
+      position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)", zIndex: 1000,
       display: "flex", alignItems: "center", justifyContent: "center", padding: 16,
     }} onClick={onClose}>
       <div
@@ -170,7 +171,7 @@ function Stat({ label, value, color }) {
 // ─── ReportBox (App7) ────────────────────────────────────────────────────────
 function ReportBox({ title, content }) {
   return (
-    <div style={{ marginTop: 16, background: "#0a0d12", borderRadius: 10, border: `1px solid ${PALETTE.border}`, overflow: "hidden" }}>
+    <div style={{ marginTop: 16, background: PALETTE.inset, borderRadius: 10, border: `1px solid ${PALETTE.border}`, overflow: "hidden" }}>
       <div style={{ padding: "8px 14px", borderBottom: `1px solid ${PALETTE.border}`, display: "flex", alignItems: "center", gap: 8 }}>
         <div style={{ width: 8, height: 8, borderRadius: "50%", background: PALETTE.success }} />
         <span style={{ fontSize: 11, color: PALETTE.muted, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em" }}>{title}</span>
@@ -241,7 +242,7 @@ function AuthPage({ onAuth }) {
       <div style={{ ...styles.card, width: 400 }}>
         <div style={{ textAlign: "center", marginBottom: 28 }}>
           <div style={{ fontSize: 32, marginBottom: 8 }}>⚡</div>
-          <h1 style={{ margin: 0, color: PALETTE.text, fontSize: 22, fontWeight: 700 }}>AI Task Manager</h1>
+          <h1 style={{ margin: 0, color: PALETTE.text, fontSize: 22, fontWeight: 700 }}>AI Emerged Task Management System</h1>
           <p style={{ color: PALETTE.muted, fontSize: 13, marginTop: 6 }}>AI-powered project & team management</p>
         </div>
 
@@ -759,14 +760,14 @@ function AIPage({ toast, user }) {
             <Btn loading={loading.team} onClick={suggestTeam} style={{ width: "100%" }}>Suggest Best Team with AI</Btn>
             {teamSuggest && (
               <div style={{ marginTop: 16 }}>
-                <div style={{ background: "#0f1117", borderRadius: 8, padding: 12, marginBottom: 10 }}>
+                <div style={{ background: PALETTE.inset, borderRadius: 8, padding: 12, marginBottom: 10 }}>
                   <div style={{ fontSize: 12, color: PALETTE.muted, marginBottom: 6 }}>⭐ Suggested Team Lead</div>
                   <div style={{ color: PALETTE.accent, fontWeight: 700, fontSize: 14 }}>{teamSuggest.suggested_team_lead?.name}</div>
                   <div style={{ color: PALETTE.muted, fontSize: 12, marginTop: 4 }}>{teamSuggest.suggested_team_lead?.reason}</div>
                 </div>
                 <div style={{ fontSize: 12, color: PALETTE.muted, marginBottom: 8 }}>👥 Suggested Members</div>
                 {teamSuggest.suggested_members?.map((m, i) => (
-                  <div key={i} style={{ background: "#0f1117", borderRadius: 8, padding: 10, marginBottom: 8 }}>
+                  <div key={i} style={{ background: PALETTE.inset, borderRadius: 8, padding: 10, marginBottom: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6 }}>
                       <span style={{ color: PALETTE.text, fontWeight: 600, fontSize: 13 }}>{m.name}</span>
                       <span style={badge("TEAM_MEMBER")}>{m.skills}</span>
@@ -775,7 +776,7 @@ function AIPage({ toast, user }) {
                   </div>
                 ))}
                 {teamSuggest.team_summary && (
-                  <div style={{ background: "#1a2540", borderRadius: 8, padding: 10, marginTop: 8 }}>
+                  <div style={{ background: PALETTE.accentSoft, borderRadius: 8, padding: 10, marginTop: 8 }}>
                     <div style={{ fontSize: 12, color: PALETTE.accent }}>{teamSuggest.team_summary}</div>
                   </div>
                 )}
@@ -803,7 +804,7 @@ function AIPage({ toast, user }) {
               <div style={{ marginTop: 16 }}>
                 <div style={{ fontSize: 12, color: PALETTE.muted, marginBottom: 8 }}>Tasks assigned per person</div>
                 {aiResult.map((t, i) => (
-                  <div key={i} style={{ background: "#0f1117", borderRadius: 8, padding: 10, marginBottom: 8 }}>
+                  <div key={i} style={{ background: PALETTE.inset, borderRadius: 8, padding: 10, marginBottom: 8 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                       <span style={{ color: PALETTE.text, fontWeight: 600, fontSize: 13 }}>{t.title}</span>
                       <span style={badge(t.priority)}>{t.priority}</span>
@@ -864,7 +865,7 @@ function AIPage({ toast, user }) {
                       ✅ {orchResult.generated_tasks.length} Tasks Generated & Assigned
                     </div>
                     {orchResult.generated_tasks.map((t, i) => (
-                      <div key={i} style={{ background: "#0f1117", borderRadius: 8, padding: 10, marginBottom: 6 }}>
+                      <div key={i} style={{ background: PALETTE.inset, borderRadius: 8, padding: 10, marginBottom: 6 }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                           <span style={{ color: PALETTE.text, fontWeight: 600, fontSize: 13 }}>{t.title}</span>
                           <span style={badge(t.priority)}>{t.priority}</span>
@@ -902,19 +903,19 @@ function AIPage({ toast, user }) {
             {productivityAnalysis && typeof productivityAnalysis === "object" && (
               <div style={{ marginTop: 16 }}>
                 {productivityAnalysis.team_health && (
-                  <div style={{ background: "#1a2540", borderRadius: 8, padding: 12, marginBottom: 12 }}>
+                  <div style={{ background: PALETTE.accentSoft, borderRadius: 8, padding: 12, marginBottom: 12 }}>
                     <div style={{ fontSize: 12, color: PALETTE.accent, fontWeight: 600, marginBottom: 4 }}>🏥 Team Health</div>
                     <div style={{ fontSize: 13, color: PALETTE.text }}>{productivityAnalysis.team_health}</div>
                   </div>
                 )}
                 {productivityAnalysis.at_risk_members?.length > 0 && (
-                  <div style={{ background: "#2e1a1a", borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                  <div style={{ background: "#fde8e8", borderRadius: 8, padding: 10, marginBottom: 12 }}>
                     <div style={{ fontSize: 12, color: PALETTE.danger, fontWeight: 600, marginBottom: 4 }}>⚠ At Risk Members</div>
                     <div style={{ fontSize: 13, color: PALETTE.text }}>{productivityAnalysis.at_risk_members.join(", ")}</div>
                   </div>
                 )}
                 {productivityAnalysis.top_performer && (
-                  <div style={{ background: "#1a2e24", borderRadius: 8, padding: 10, marginBottom: 12 }}>
+                  <div style={{ background: "#e3f6ec", borderRadius: 8, padding: 10, marginBottom: 12 }}>
                     <div style={{ fontSize: 12, color: PALETTE.success, fontWeight: 600, marginBottom: 4 }}>🏆 Top Performer</div>
                     <div style={{ fontSize: 13, color: PALETTE.text }}>{productivityAnalysis.top_performer}</div>
                   </div>
@@ -924,7 +925,7 @@ function AIPage({ toast, user }) {
                   const riskColor = { LOW: PALETTE.success, MEDIUM: PALETTE.warning, HIGH: PALETTE.danger }[m.burnout_risk] || PALETTE.muted;
                   const workloadColor = { UNDERLOADED: PALETTE.muted, BALANCED: PALETTE.success, OVERLOADED: PALETTE.danger }[m.workload_status] || PALETTE.muted;
                   return (
-                    <div key={i} style={{ background: "#0f1117", borderRadius: 8, padding: 12, marginBottom: 10, border: `1px solid ${PALETTE.border}` }}>
+                    <div key={i} style={{ background: PALETTE.inset, borderRadius: 8, padding: 12, marginBottom: 10, border: `1px solid ${PALETTE.border}` }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                         <span style={{ color: PALETTE.text, fontWeight: 700, fontSize: 14 }}>{m.name}</span>
                         <span style={{ color: PALETTE.accent, fontWeight: 700, fontSize: 16 }}>
@@ -935,10 +936,10 @@ function AIPage({ toast, user }) {
                         <div style={{ width: `${m.productivity_score}%`, height: "100%", background: PALETTE.accent, borderRadius: 99 }} />
                       </div>
                       <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-                        <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 99, background: "#1a1a2e", color: riskColor, fontWeight: 600 }}>
+                        <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 99, background: PALETTE.inset, color: riskColor, fontWeight: 600 }}>
                           🔥 Burnout: {m.burnout_risk}
                         </span>
-                        <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 99, background: "#1a1a2e", color: workloadColor, fontWeight: 600 }}>
+                        <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 99, background: PALETTE.inset, color: workloadColor, fontWeight: 600 }}>
                           ⚖ Workload: {m.workload_status}
                         </span>
                       </div>
@@ -1047,42 +1048,70 @@ function ProductivityPage({ toast, user }) {
 
   // ── Load ──────────────────────────────────────────────────────────────────
   const load = useCallback(async () => {
-    if (!canView) { setLoading(false); return; }
-    setLoading(true);
-    try {
-      const [p, u, t] = await Promise.all([
-        apiFetch("/productivity/all"),
-        apiFetch("/user/all"),
-        apiFetch("/tasks/all"),
-      ]);
-      setData(p);
-      setUsers(u);
-      setTasks(t);
-    } catch { }
-    setLoading(false);
-  }, [canView]);
+  if (!canView) { setLoading(false); return; }
+  setLoading(true);
 
-  useEffect(() => { load(); }, [load]);
+  const [p, u, t] = await Promise.allSettled([
+    apiFetch("/productivity/all"),
+    apiFetch("/user/all"),
+    apiFetch("/tasks/all"),
+  ]);
 
+  if (p.status === "fulfilled") setData(Array.isArray(p.value) ? p.value : []);
+  else { console.error("productivity/all failed:", p.reason); toast("Could not load productivity data", "error"); }
+
+  if (u.status === "fulfilled") setUsers(Array.isArray(u.value) ? u.value : []);
+  else console.error("user/all failed:", u.reason);
+
+  if (t.status === "fulfilled") setTasks(Array.isArray(t.value) ? t.value : []);
+  else console.error("tasks/all failed (continuing without it):", t.reason);
+
+  setLoading(false);
+}, [canView]);
   // ── Helpers ───────────────────────────────────────────────────────────────
   const userName = id => users.find(u => u.user_id === id)?.name || id?.slice(0, 8) + "…";
 
-  // Combine productivity records with the real completed-task count from /tasks/all.
-  // If the productivity table was never updated (shows 0), the real count is used instead.
-  const rows = data.map(d => {
-    const done = tasks.filter(t => t.assigned_to === d.user_id && t.status === "COMPLETED").length;
-    return { ...d, tasks_completed: Math.max(d.tasks_completed || 0, done) };
-  });
+  // ── Scoring settings ──────────────────────────────────────────────────────
+const TARGET_HOURS = 40;       // hours that count as a "full" week
+const USE_STORED_SCORE = false; // true = trust the saved score from Edit when it's > 0
 
-  const total    = rows.reduce((a, d) => a + (d.tasks_completed || 0), 0);
-  const totalHrs = rows.reduce((a, d) => a + (d.hours_worked || 0), 0);
+const num = v => Number(v) || 0;
+const round1 = v => Math.round(v * 10) / 10;
 
-  // Top performer: highest tasks (score as tie-breaker). null if nobody has done anything.
-  const top = rows.reduce((a, d) => {
-    const dv = (d.tasks_completed || 0) * 1000 + (d.productivity_score || 0);
-    const av = a ? (a.tasks_completed || 0) * 1000 + (a.productivity_score || 0) : 0;
-    return dv > av ? d : a;
-  }, null);
+const rows = data.map(d => {
+  const mine     = tasks.filter(t => t.assigned_to === d.user_id);
+  const assigned = mine.length;
+  const done     = mine.filter(t => t.status === "COMPLETED").length;
+
+  const completed = Math.max(num(d.tasks_completed), done);
+  const hours     = round1(num(d.hours_worked));
+
+  // Score: 70 pts task completion + 30 pts hours logged (capped at TARGET_HOURS)
+  const completionPart = assigned > 0 ? Math.min(completed / assigned, 1) * 70 : 0;
+  const hoursPart      = Math.min(hours / TARGET_HOURS, 1) * 30;
+  const calcScore      = Math.round(completionPart + hoursPart);
+
+  const stored = num(d.productivity_score);
+  const score  = USE_STORED_SCORE && stored > 0 ? stored : calcScore;
+
+  return {
+    ...d,
+    tasks_completed:    completed,
+    hours_worked:       hours,
+    productivity_score: Math.min(100, score),
+    assigned_count:     assigned,
+  };
+});
+
+const total    = rows.reduce((a, d) => a + d.tasks_completed, 0);
+const totalHrs = round1(rows.reduce((a, d) => a + d.hours_worked, 0));
+
+const top = rows.reduce((a, d) => {
+  if (d.tasks_completed === 0 && d.hours_worked === 0) return a;
+  const dv = d.productivity_score * 1000 + d.tasks_completed;
+  const av = a ? a.productivity_score * 1000 + a.tasks_completed : -1;
+  return dv > av ? d : a;
+}, null);
 
   function openEdit(record) {
     setSelected(record);
@@ -1558,7 +1587,7 @@ export default function App() {
       }}>
         <div style={{ padding: "0 20px 20px", borderBottom: `1px solid ${PALETTE.border}`, marginBottom: 16 }}>
           <div style={{ fontSize: 20, marginBottom: 4 }}>⚡</div>
-          <div style={{ fontWeight: 700, fontSize: 14, color: PALETTE.text }}>AI Task Manager</div>
+          <div style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.3, color: PALETTE.text }}>AI Emerged Task Management System</div>
           <div style={{ fontSize: 11, color: PALETTE.muted, marginTop: 2 }}>{user?.role?.replace(/_/g, " ")}</div>
         </div>
 
